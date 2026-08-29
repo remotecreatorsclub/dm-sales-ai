@@ -1669,3 +1669,155 @@ body{min-height:100dvh;overflow-x:hidden}
     display:none!important;
   }
 }
+
+
+/* ==========================================================
+   v0.6.6 · CHAT HEADER CLEANUP
+   Entfernt die große Avatar-/S-Box im Chat-Header.
+   ========================================================== */
+
+@media (min-width: 761px) {
+  .chat-head > .avatar{
+    display:none!important;
+  }
+
+  .chat-head > div:nth-of-type(2){
+    flex:1 1 auto;
+    min-width:0;
+  }
+
+  .chat-head > div:nth-child(2){
+    flex:0 0 auto;
+  }
+}
+
+
+/* ==========================================================
+   v0.6.7 · SIDEBAR BOTTOM POLISH
+   Unterer Bereich als saubere, einheitliche Account-Karte.
+   ========================================================== */
+
+@media (min-width: 761px) {
+  .sidebar-bottom{
+    margin-top:18px!important;
+    padding:0 0 max(16px, env(safe-area-inset-bottom))!important;
+    display:block;
+  }
+
+  .sidebar-bottom{
+    background:#0b1626;
+    border:1px solid #223248;
+    border-radius:16px;
+    overflow:hidden;
+  }
+
+  .usage{
+    margin:0!important;
+    padding:15px 16px 14px!important;
+    border:0!important;
+    border-radius:0!important;
+    background:transparent!important;
+    border-bottom:1px solid #1f2f43!important;
+  }
+
+  .usage-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+
+  .usage-head span{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .usage-head b{
+    flex:0 0 auto;
+    white-space:nowrap;
+  }
+
+  .usage-bar{
+    margin:12px 0 10px!important;
+  }
+
+  .usage small{
+    display:block;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .user{
+    margin:0!important;
+    padding:14px 16px!important;
+    min-height:72px;
+    gap:12px!important;
+    align-items:center;
+    background:transparent;
+    border-radius:0;
+  }
+
+  .user .avatar{
+    width:44px!important;
+    height:44px!important;
+    flex:0 0 44px;
+    border-radius:12px!important;
+    font-size:15px!important;
+  }
+
+  .user>div:nth-child(2){
+    flex:1 1 auto;
+    min-width:0;
+  }
+
+  .user strong{
+    font-size:13px!important;
+    line-height:1.25;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .user span{
+    margin-top:3px;
+    font-size:10px!important;
+    line-height:1.3;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .user>svg{
+    flex:0 0 auto;
+    margin-left:auto;
+    width:19px!important;
+    height:19px!important;
+  }
+}
+
+/* Mobile: gleiche saubere Karte, etwas kompakter */
+@media (max-width:760px){
+  .sidebar-bottom{
+    margin-top:16px!important;
+    padding:0 0 max(14px, env(safe-area-inset-bottom))!important;
+    background:#0b1626;
+    border:1px solid #223248;
+    border-radius:15px;
+    overflow:hidden;
+  }
+
+  .usage{
+    margin:0!important;
+    border:0!important;
+    border-bottom:1px solid #1f2f43!important;
+    border-radius:0!important;
+    background:transparent!important;
+  }
+
+  .user{
+    margin:0!important;
+    padding:13px 14px!important;
+  }
+}
