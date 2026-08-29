@@ -886,7 +886,12 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
 15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
 16. Bei konkreten Produktfragen wie "Wie verdient man damit?", "Was ist enthalten?" oder "Welche Wege gibt es?" hat die sachlich korrekte Antwort aus der Knowledge Base Vorrang vor einer weiteren Qualifizierungsfrage.
-17. Sag NICHT "Das ist okay", "Das ist ein großes Problem", "speziell für Menschen wie dich", "umfassendes System" oder "Viele Leute ...". Das wirkt wie Bot-/Sales-Sprache.
+16a. Bei einer sachlichen Informationsfrage beginne DIREKT mit der Antwort. Kein vorgeschaltetes Lob, keine Validierung und kein Empathie-Füllsatz.
+Beispiel:
+Lead: "Kannst du mir erklären, wie das funktioniert?"
+Gut: "Ja. Im RCC gibt's im Kern 3 Wege: ..."
+Schlecht: "Ja, das ist ein berechtigter Punkt. Im RCC ..."
+17. Sag NICHT "Das ist okay", "Das ist völlig okay", "Das ist ein großes Problem", "Das ist ein berechtigter Punkt", "berechtigter Punkt", "speziell für Menschen wie dich", "umfassendes System" oder "Viele Leute ...". Das wirkt wie Bot-/Sales-Sprache.
 18. Verwende "Möchtest du wissen ...?", "Willst du wissen ...?" oder "Soll ich dir erklären ...?" nur ausnahmsweise. Wenn der Lead bereits "ja/ja gerne/okay" auf so eine Frage geantwortet hat, MUSST du die versprochene Information liefern und darfst nicht erneut um Erlaubnis fragen.
 19. Wiederhole den Angebotsnamen nicht in jeder Nachricht. Wenn er im direkten Kontext bereits klar ist, sprich natürlicher mit "das", "dabei" oder direkt über den Inhalt.
 20. Wiederhole auch Formulierungen wie "Schritt für Schritt" nicht ständig. Variiere natürlich.
@@ -1038,7 +1043,15 @@ async function runNaturalReply(
 
   try {
     const latestLead = [...history].reverse().find((m) => m.role === 'user')?.content || '';
-    const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
+    const informationalQuestion = /\b(kannst du .*erklären|wie funktioniert|was genau|wie genau|welche wege|was ist enthalten|wie verdient|was kostet|kosten|preis|raten|klarna)\b/i.test(latestLead);
+  if (
+    informationalQuestion &&
+    /^(ja[,!. ]+)?(das ist|verstehe|ich verstehe|klar,? das ist|okay,? das ist)/i.test(reply.trim())
+  ) {
+    return 'Direkte Informationsfrage: ohne Validierungs-/Empathie-Füllsatz starten. Beginne unmittelbar mit der sachlichen Antwort.';
+  }
+
+  const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
     const recentAI = history.filter((m) => m.role === 'assistant').slice(-2);
     const recentQuestionCount = recentAI.filter((m) => /\?\s*$/.test(m.content.trim())).length;
     const shortConsent = /^\s*(ja|ja gern|ja gerne|gerne|gern|okay|ok|klar|genau|mach|bitte|yes|sure)[.! ]*$/i.test(latestLead);
@@ -1634,6 +1647,9 @@ function naturalReplyViolation(
   const bannedPhrases = [
     'kein problem',
     'das ist okay',
+    'das ist völlig okay',
+    'das ist ein berechtigter punkt',
+    'berechtigter punkt',
     'das ist großartig',
     'das ist ein großes problem',
     'großartiger startpunkt',
