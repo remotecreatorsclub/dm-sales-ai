@@ -325,6 +325,7 @@ const demoBootstrap = {
     name: 'Sales Agent',
     active: true,
     offerName: 'Dein Hauptangebot',
+    productKnowledge: '',
     price: '1.197 €',
     audience: 'Menschen, die ein digitales Business aufbauen möchten',
     painPoints:
@@ -435,6 +436,7 @@ async function bootstrap(env: Env) {
       name: agent.name,
       active: Boolean(agent.active),
       offerName: agent.offer_name || '',
+      productKnowledge: agent.offer_description || '',
       price: agent.price_text || '',
       audience: agent.audience || '',
       painPoints: agent.pain_points || '',
@@ -466,6 +468,7 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
     String(body.name || 'Sales Agent'),
     body.active === false ? 0 : 1,
     String(body.offerName || ''),
+    String(body.productKnowledge || ''),
     String(body.price || ''),
     String(body.audience || ''),
     String(body.painPoints || ''),
@@ -479,14 +482,14 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
   if (existing) {
     await env.DB
       .prepare(
-        'UPDATE ai_agents SET name=?,active=?,offer_name=?,price_text=?,audience=?,pain_points=?,outcomes=?,objections=?,checkout_url=?,booking_url=?,tone=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        'UPDATE ai_agents SET name=?,active=?,offer_name=?,offer_description=?,price_text=?,audience=?,pain_points=?,outcomes=?,objections=?,checkout_url=?,booking_url=?,tone=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
       )
       .bind(...values, existing.id)
       .run();
   } else {
     await env.DB
       .prepare(
-        'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,price_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,offer_description,price_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .bind(crypto.randomUUID(), DEMO_ORG, ...values)
       .run();
@@ -503,6 +506,8 @@ Du verstehst zuerst, antwortest konkret und führst das Gespräch Schritt für S
 
 ANGEBOT
 Name: ${agent.offer_name || agent.offerName || ''}
+Verbindliches Produktwissen / Knowledge Base:
+${agent.offer_description || agent.productKnowledge || 'Keine zusätzlichen Produktfakten hinterlegt.'}
 Preis: ${agent.price_text || agent.price || ''}
 Zielgruppe: ${agent.audience || ''}
 Painpoints: ${agent.pain_points || agent.painPoints || ''}
@@ -676,6 +681,8 @@ Du schreibst NICHT die sichtbare Kundenantwort. Setze das Feld "reply" immer exa
 
 ANGEBOT
 Name: ${agent.offer_name || agent.offerName || ''}
+Verbindliches Produktwissen / Knowledge Base:
+${agent.offer_description || agent.productKnowledge || 'Keine zusätzlichen Produktfakten hinterlegt.'}
 Preis: ${agent.price_text || agent.price || ''}
 Zielgruppe: ${agent.audience || ''}
 Painpoints: ${agent.pain_points || agent.painPoints || ''}
@@ -724,6 +731,10 @@ Kein JSON. Keine Analyse. Keine Labels. Nur die Nachricht, die der Lead sehen so
 
 ANGEBOT — DAS SIND DIE EINZIG ERLAUBTEN PRODUKTFAKTEN
 Name: ${agent.offer_name || agent.offerName || ''}
+
+VERBINDLICHE KNOWLEDGE BASE
+${agent.offer_description || agent.productKnowledge || 'Keine zusätzlichen Produktfakten hinterlegt.'}
+
 Preis/Zahlungsoptionen: ${agent.price_text || agent.price || ''}
 Zielgruppe: ${agent.audience || ''}
 Painpoints: ${agent.pain_points || agent.painPoints || ''}
@@ -734,10 +745,14 @@ Termin: ${agent.booking_url || agent.bookingUrl || ''}
 Grundton: ${agent.tone || 'Natürlich, direkt, freundlich und kurz.'}
 
 WICHTIGE GROUNDING-REGEL:
-- Erfinde KEINE Produktkategorie, Funktion oder Leistung, die oben nicht steht.
+- Die Knowledge Base und die übrigen Angebotsfelder sind die einzige Wahrheit für konkrete Produktfragen.
+- Erfinde KEINE Produktkategorie, Funktion, Leistung, Verdienstmöglichkeit, Zahlungsoption, Modulzahl oder Eigenschaft, die dort nicht steht.
 - Nenne das Angebot NICHT "Tool", "Software", "App", "Plattform", "Coaching", "Kurs" oder ähnliches, wenn genau dieses Wort nicht in den Produktfakten vorkommt.
 - Erfinde keine Funktionen wie "Plattform erstellen", "Kunden automatisch ansprechen", "Ads schalten" oder Ähnliches.
-- Wenn Informationen fehlen, bleib allgemein und wahr: erkläre nur, was aus Zielgruppe + Ergebnissen eindeutig hervorgeht.
+- Wenn der Lead eine konkrete Produktfrage stellt, beantworte sie zuerst ausschließlich aus den hinterlegten Fakten.
+- Wenn der Lead eine Anzahl oder Liste anspricht, z. B. "Ich dachte es gibt 3 Wege?", verwende exakt die entsprechende Liste aus der Knowledge Base und erfinde keine Ersatzpunkte.
+- Wenn die gesuchte Information nicht hinterlegt ist, sage knapp, dass diese konkrete Info im Produktwissen nicht hinterlegt ist. Rate NICHT und ergänze NICHT aus allgemeinem Wissen.
+- Eine Produktfrage ist kein Grund, automatisch zu pitchen oder die Sales-Stage künstlich hochzustufen.
 
 ${context}
 
@@ -750,7 +765,7 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 4. Wenn der Lead eine direkte Frage stellt, beantworte sie zuerst.
 5. Maximal 1-2 kurze Sätze und höchstens eine Frage.
 6. Keine Landingpage-Sprache, kein Monolog, kein künstlicher Pitch.
-7. Verbotene Floskeln: "Kein Problem", "Das ist großartig", "großartiger Startpunkt", "Ich bin froh", "Ich verstehe, dass", "Vielen Dank", "Lass uns gemeinsam".
+7. Verbotene Floskeln: "Kein Problem", "Das ist großartig", "großartiger Startpunkt", "super Startpunkt", "ganz normaler Startpunkt", "ganz normaler Einwand", "Viele Leute wie du", "Ich bin froh", "Ich verstehe, dass", "Vielen Dank", "Lass uns gemeinsam".
 8. Sprich direkt mit dem Lead.
 9. "du/dein/dir/dich" im Lead => konsequent duzen. "Sie/Ihnen/Ihr" => konsequent siezen.
 10. Keine bereits geklärte Frage erneut stellen.
@@ -759,6 +774,7 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 13. Keine erfundenen Fakten, Garantien, falsche Knappheit oder Druck.
 14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
 15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
+16. Bei konkreten Produktfragen wie "Wie verdient man damit?", "Was ist enthalten?" oder "Welche Wege gibt es?" hat die sachlich korrekte Antwort aus der Knowledge Base Vorrang vor einer weiteren Qualifizierungsfrage.
 
 ${firstContact ? `ERSTKONTAKT:
 - Nicht pitchen.
