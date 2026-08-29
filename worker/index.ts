@@ -27,7 +27,7 @@ type SalesTurn = {
 };
 
 const API_VERSION_DEFAULT = 'v26.0';
-const AI_MODEL_DEFAULT = '@cf/google/gemma-4-26b-a4b-it';
+const AI_MODEL_DEFAULT = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEMO_ORG = 'org_demo';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -472,7 +472,7 @@ async function runWorkersAI(
       {
         messages,
         temperature: 0.35,
-        max_completion_tokens: 650,
+        max_tokens: 450,
         response_format: {
           type: 'json_schema',
           json_schema: SALES_SCHEMA,
@@ -501,7 +501,7 @@ async function runWorkersAI(
       {
         messages: fallbackMessages,
         temperature: 0.25,
-        max_completion_tokens: 650,
+        max_tokens: 450,
       } as any,
     );
 
