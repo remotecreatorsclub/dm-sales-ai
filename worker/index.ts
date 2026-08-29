@@ -24,6 +24,21 @@ type SalesTurn = {
   budget: string;
   objection: string;
   summary: string;
+  known_facts: string;
+  open_questions: string;
+  next_step: string;
+  style_language: string;
+  style_address: string;
+  style_formality: string;
+  style_sentence_length: string;
+  style_message_length: string;
+  style_emoji_usage: string;
+  style_slang: string;
+  style_energy: string;
+  style_directness: string;
+  style_humor: string;
+  style_punctuation: string;
+  style_notes: string;
 };
 
 const API_VERSION_DEFAULT = 'v26.0';
@@ -49,6 +64,21 @@ const SALES_SCHEMA = {
     budget: { type: 'string' },
     objection: { type: 'string' },
     summary: { type: 'string' },
+    known_facts: { type: 'string' },
+    open_questions: { type: 'string' },
+    next_step: { type: 'string' },
+    style_language: { type: 'string' },
+    style_address: { type: 'string' },
+    style_formality: { type: 'string' },
+    style_sentence_length: { type: 'string' },
+    style_message_length: { type: 'string' },
+    style_emoji_usage: { type: 'string' },
+    style_slang: { type: 'string' },
+    style_energy: { type: 'string' },
+    style_directness: { type: 'string' },
+    style_humor: { type: 'string' },
+    style_punctuation: { type: 'string' },
+    style_notes: { type: 'string' },
   },
   required: [
     'reply',
@@ -61,6 +91,21 @@ const SALES_SCHEMA = {
     'budget',
     'objection',
     'summary',
+    'known_facts',
+    'open_questions',
+    'next_step',
+    'style_language',
+    'style_address',
+    'style_formality',
+    'style_sentence_length',
+    'style_message_length',
+    'style_emoji_usage',
+    'style_slang',
+    'style_energy',
+    'style_directness',
+    'style_humor',
+    'style_punctuation',
+    'style_notes',
   ],
 } as const;
 
@@ -100,6 +145,24 @@ const demoBootstrap = {
       experience: 'Anfängerin',
       budget: '1.000–2.000 €',
       objection: 'Angst vor Technik',
+      summary: 'Komplette Anfängerin. Möchte nebenberuflich starten. Motivation ist da, aber fehlender Startpunkt und Technik bremsen sie.',
+      knownFacts: '- startet komplett bei null\n- möchte nebenberuflich aufbauen\n- Motivation ist vorhanden\n- Technik und fehlender klarer Startpunkt bremsen sie',
+      openQuestions: '- Welche konkrete technische Aufgabe macht ihr am meisten Sorgen?\n- In welchem Zeitraum möchte sie starten?',
+      nextStep: 'Technik-Einwand konkretisieren. Danach zeigen, wie ein klarer Ablauf genau diese Unsicherheit reduziert.',
+      styleProfile: {
+        language: 'Deutsch',
+        address: 'du',
+        formality: 'locker',
+        sentenceLength: 'kurz',
+        messageLength: 'kurz',
+        emojiUsage: 'selten',
+        slang: 'kaum',
+        energy: 'ruhig',
+        directness: 'direkt',
+        humor: 'neutral',
+        punctuation: 'normal',
+        notes: 'Natürlich, knapp und ohne formelle Sales-Sprache antworten.',
+      },
       messages: [
         {
           id: 'm1',
@@ -161,6 +224,24 @@ const demoBootstrap = {
       experience: 'Hat bereits Angebot',
       budget: '500–1.000 €',
       objection: 'Noch offen',
+      summary: 'Hat bereits ein Angebot und möchte planbar zusätzliche 1.000 € verdienen.',
+      knownFacts: '- hat bereits ein Angebot\n- Ziel: 1.000 € zusätzlich\n- braucht eine planbare Leadquelle',
+      openQuestions: '- Wie verkauft er aktuell?\n- Wie viele Leads bekommt er derzeit?',
+      nextStep: 'Aktuellen Verkaufsprozess verstehen und herausfinden, wo genau Leads fehlen.',
+      styleProfile: {
+        language: 'Deutsch',
+        address: 'du',
+        formality: 'locker',
+        sentenceLength: 'kurz',
+        messageLength: 'kurz',
+        emojiUsage: 'keine',
+        slang: 'kaum',
+        energy: 'sachlich',
+        directness: 'direkt',
+        humor: 'neutral',
+        punctuation: 'normal',
+        notes: 'Kurz und konkret antworten.',
+      },
       messages: [],
     },
     {
@@ -179,6 +260,24 @@ const demoBootstrap = {
       experience: 'Unbekannt',
       budget: 'Unbekannt',
       objection: 'Kein akuter Bedarf',
+      summary: 'Schaut sich aktuell nur um. Noch kein klares Ziel oder akuter Bedarf.',
+      knownFacts: '- schaut sich nur um',
+      openQuestions: '- Was interessiert sie überhaupt?\n- Gibt es ein konkretes Ziel?',
+      nextStep: 'Keinen Druck machen. Locker herausfinden, was sie überhaupt spannend findet.',
+      styleProfile: {
+        language: 'Deutsch',
+        address: 'du',
+        formality: 'locker',
+        sentenceLength: 'kurz',
+        messageLength: 'kurz',
+        emojiUsage: 'gelegentlich',
+        slang: 'kaum',
+        energy: 'locker',
+        directness: 'weich',
+        humor: 'leicht',
+        punctuation: 'normal',
+        notes: 'Locker und unverbindlich bleiben.',
+      },
       messages: [],
     },
   ],
@@ -355,9 +454,11 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
 }
 
 function systemPrompt(agent: D1Row) {
-  return `Du bist ein KI-Sales-Agent für Instagram-DMs.
+  return `Du führst echte, natürliche Verkaufsgespräche per Instagram-DM.
 
-Deine Aufgabe ist NICHT, Menschen sofort zu pitchen. Du führst ein natürliches Gespräch, verstehst zuerst die Situation, erkennst echte Bedürfnisse und prüfst den Fit. Erst dann darfst du eine passende Lösung oder einen CTA anbieten.
+DEIN OBERSTES PRINZIP:
+Die Antwort muss sich so lesen, als würde ein aufmerksamer Mensch schreiben, der die Sprache des Leads versteht.
+Du passt dich an den Lead an, ohne ihn künstlich zu imitieren.
 
 ANGEBOT
 Name: ${agent.offer_name || agent.offerName || ''}
@@ -368,31 +469,178 @@ Gewünschte Ergebnisse: ${agent.outcomes || ''}
 Typische Einwände: ${agent.objections || ''}
 Checkout: ${agent.checkout_url || agent.checkoutUrl || ''}
 Termin: ${agent.booking_url || agent.bookingUrl || ''}
-Tonalität: ${agent.tone || 'Natürlich, freundlich, direkt und kurz.'}
+Grundton des Unternehmens: ${agent.tone || 'Natürlich, freundlich, direkt und kurz.'}
+
+KONTEXT-ARCHITEKTUR
+Du bekommst pro Lead:
+1. LEAD MEMORY = die wichtigsten langfristigen Fakten aus dem bisherigen Gespräch.
+2. STYLE PROFILE = wie dieser Lead tatsächlich schreibt.
+3. LETZTE NACHRICHTEN = die letzten Nachrichten für Ton, unmittelbaren Kontext und Gesprächsfluss.
+
+Der komplette Rohverlauf bleibt im System gespeichert, aber du arbeitest pro Antwort primär mit Lead Memory + Style Profile + den letzten Nachrichten.
+Aktualisiere Lead Memory und Style Profile bei jeder neuen Lead-Nachricht.
+
+LEAD MEMORY
+Halte dauerhaft fest:
+- Ziel
+- aktuelle Situation
+- Haupt-Painpoint
+- Erfahrung
+- Budget, falls genannt
+- offene Einwände
+- bereits geklärte Punkte
+- noch offene sinnvolle Fragen
+- kurze Zusammenfassung
+- nächster sinnvoller Schritt
+
+Wichtig:
+- Nichts erfinden.
+- Unbekannt bleibt "Unklar".
+- Bereits geklärte Dinge nicht erneut abfragen.
+- Neuere klare Aussagen überschreiben ältere widersprüchliche Aussagen.
+- known_facts: maximal 8 knappe Stichpunkte.
+- open_questions: maximal 4 wirklich relevante offene Punkte.
+- summary: maximal 3 kurze Sätze.
+- next_step: ein konkreter nächster Gesprächsschritt.
+
+STYLE MIRRORING — SEHR WICHTIG
+Analysiere ausschließlich den Kommunikationsstil des Leads und passe deine sichtbare Antwort daran an:
+- Sprache
+- du/Sie
+- Formalität
+- Satzlänge
+- Nachrichtenlänge
+- Umgangssprache / Slang
+- Emoji-Nutzung
+- Energie
+- Direktheit
+- Humor
+- Interpunktion
+
+Beispiele:
+- Lead schreibt locker → du schreibst locker.
+- Lead schreibt kurz → du schreibst kurz.
+- Lead schreibt ausführlich → du darfst etwas ausführlicher sein.
+- Lead nutzt "Sie" → du nutzt "Sie".
+- Lead nutzt "du" → du nutzt "du".
+- Lead nutzt keine Emojis → du drängst keine Emojis hinein.
+- Lead nutzt gelegentlich Emojis → du darfst gelegentlich passende Emojis nutzen.
+- Lead nutzt Umgangssprache → du darfst natürliche Umgangssprache nutzen.
+- Lead schreibt sachlich → du bleibst sachlich.
+- Lead ist sehr direkt → du darfst direkter werden.
+
+NICHT TUN:
+- Rechtschreibfehler absichtlich kopieren.
+- Slang, Dialekt oder Emojis übertreiben.
+- Jede Formulierung des Leads spiegeln.
+- Beleidigungen oder aggressive Sprache eskalieren.
+- Eine künstliche Persona spielen.
+- Den Lead psychologisch manipulieren.
+
+Wenn du zwischen perfekter Grammatik und einer natürlicheren Instagram-DM wählen musst, bevorzuge die natürlichere Formulierung, solange sie klar bleibt.
 
 SALES-STUFEN
-1. discovery: Situation verstehen
-2. painpoint: Problem konkretisieren
-3. goal: Ziel verstehen
-4. qualification: Fit, Erfahrung und Rahmen verstehen
-5. solution: passende Lösung erklären
-6. objection: echten Einwand behandeln
-7. close: nur bei ausreichendem Fit zum nächsten Schritt führen
+1. discovery = Situation verstehen
+2. painpoint = echtes Problem verstehen
+3. goal = konkretes Ziel verstehen
+4. qualification = prüfen, ob das Angebot passt
+5. solution = passende Lösung erklären
+6. objection = offenen Einwand klären
+7. close = nächsten sinnvollen Schritt anbieten
 
-REGELN
-- Meist 1 bis 4 kurze Sätze wie in einer echten Instagram-DM.
+GESPRÄCHSREGELN
+- Normalerweise 1 bis 2 kurze Sätze.
 - Höchstens eine klare Frage pro Nachricht.
-- Nicht dieselbe Frage mehrfach stellen, wenn sie schon beantwortet wurde.
-- Keine erfundenen Fakten, Garantien oder Ergebnisse.
-- Keine falsche Knappheit, Drohungen, Schuldgefühle oder Angst-Druck.
-- Sensible persönliche Eigenschaften niemals ableiten oder für den Verkauf verwenden.
-- Painpoints dienen dazu, Relevanz zu verstehen, nicht Schwächen auszunutzen.
+- Nicht jede Nachricht muss mit einer Frage enden.
+- Reagiere zuerst auf die konkrete letzte Aussage.
+- Keine Interview-Kette.
+- Frage nie etwas erneut, das im Memory oder in den letzten Nachrichten bereits geklärt ist.
+- Nicht sofort pitchen.
+- Das Angebot erst erwähnen, wenn es logisch aus dem Gespräch entsteht.
+- Checkout oder Termin erst bei erkennbarem Fit oder wenn die Person danach fragt.
 - Wenn kein Fit erkennbar ist, nicht pushen.
-- Checkout oder Termin nur senden, wenn der Lead ausreichend qualifiziert ist oder ausdrücklich danach fragt.
-- Der Score ist eine interne Fit-/Kaufbereitschaftsschätzung, keine Gewissheit.
-- Unbekannte Daten mit "Unklar" ausgeben.
+- Kein künstlicher Druck, keine falsche Knappheit, keine Garantien.
+- Keine erfundenen Resultate.
+- Keine Schuldgefühle oder Angst als Verkaufshebel.
+- Sensible persönliche Eigenschaften niemals ableiten oder für den Verkauf verwenden.
 
-Du musst neben der Antwort auch den aktuellen Lead-Zustand strukturiert einschätzen.`;
+UNNATÜRLICHE KI-SPRACHE VERMEIDEN
+Vermeide Formulierungen wie:
+- "Ich verstehe, dass ..."
+- "Das klingt so, als ob ..."
+- "Es ist völlig verständlich, dass ..."
+- "Vielen Dank, dass du das teilst."
+- "Was bereitet dir dabei die größten Sorgen?"
+- "Wie kann ich dich dabei unterstützen?"
+- "Lass uns gemeinsam herausfinden ..."
+
+Lieber:
+- "Ja, versteh ich."
+- "Ah okay."
+- "Macht Sinn."
+- "Ist es eher X oder Y?"
+- "Wo würdest du gerade am ehesten hängen bleiben?"
+- "Okay, dann liegt es eigentlich eher an X als an Y."
+
+OUTPUT
+Neben der sichtbaren DM-Antwort musst du den Lead-Zustand und das Style Profile strukturiert aktualisieren.
+Der Score ist nur eine interne Fit-/Kaufbereitschaftsschätzung, keine Gewissheit.`;
+}
+
+function parseJsonObject(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function leadContextPrompt(lead: D1Row) {
+  const memory = {
+    goal: lead.goal || 'Unklar',
+    painPoint: lead.pain_point || lead.painPoint || 'Unklar',
+    experience: lead.experience || 'Unklar',
+    budget: lead.budget || 'Unklar',
+    objection: lead.objection || 'Unklar',
+    summary: lead.summary || '',
+    ...parseJsonObject(lead.memory_json || lead.memoryJson),
+  };
+
+  const style = parseJsonObject(lead.style_profile_json || lead.styleProfile);
+
+  return `LEAD MEMORY
+Ziel: ${memory.goal || 'Unklar'}
+Painpoint: ${memory.painPoint || memory.pain_point || 'Unklar'}
+Erfahrung: ${memory.experience || 'Unklar'}
+Budget: ${memory.budget || 'Unklar'}
+Einwand: ${memory.objection || 'Unklar'}
+Zusammenfassung: ${memory.summary || 'Noch keine Zusammenfassung'}
+Bereits geklärt:
+${memory.knownFacts || memory.known_facts || 'Noch nichts belastbar gespeichert'}
+Noch offen:
+${memory.openQuestions || memory.open_questions || 'Noch offen'}
+Nächster sinnvoller Schritt:
+${memory.nextStep || memory.next_step || lead.next_step || 'Natürlich weiter verstehen'}
+
+STYLE PROFILE
+Sprache: ${style.language || 'Noch erkennen'}
+Anrede: ${style.address || 'Noch erkennen'}
+Formalität: ${style.formality || 'Noch erkennen'}
+Satzlänge: ${style.sentenceLength || style.sentence_length || 'Noch erkennen'}
+Nachrichtenlänge: ${style.messageLength || style.message_length || 'Noch erkennen'}
+Emoji-Nutzung: ${style.emojiUsage || style.emoji_usage || 'Noch erkennen'}
+Slang: ${style.slang || 'Noch erkennen'}
+Energie: ${style.energy || 'Noch erkennen'}
+Direktheit: ${style.directness || 'Noch erkennen'}
+Humor: ${style.humor || 'Noch erkennen'}
+Interpunktion: ${style.punctuation || 'Noch erkennen'}
+Notizen: ${style.notes || 'Keine'}
+
+Nutze dieses Memory als langfristigen Kontext. Nutze die folgenden letzten Nachrichten für den aktuellen Gesprächsfluss und zur Aktualisierung des Style Profiles.`;
 }
 
 function extractWorkersAIValue(result: any): unknown {
@@ -440,18 +688,35 @@ function parseSalesTurn(value: unknown): SalesTurn | null {
     if (!allowedTemps.includes(String(row.temperature))) return null;
 
     const numericScore = Math.max(0, Math.min(100, Number(row.score || 0)));
+    const str = (key: string, fallback = 'Unklar') =>
+      String(row[key] ?? fallback).trim() || fallback;
 
     return {
-      reply: row.reply.trim(),
+      reply: str('reply', ''),
       stage: String(row.stage) as SalesTurn['stage'],
       temperature: String(row.temperature) as SalesTurn['temperature'],
       score: Math.round(numericScore),
-      goal: String(row.goal || 'Unklar'),
-      pain_point: String(row.pain_point || 'Unklar'),
-      experience: String(row.experience || 'Unklar'),
-      budget: String(row.budget || 'Unklar'),
-      objection: String(row.objection || 'Unklar'),
-      summary: String(row.summary || ''),
+      goal: str('goal'),
+      pain_point: str('pain_point'),
+      experience: str('experience'),
+      budget: str('budget'),
+      objection: str('objection'),
+      summary: str('summary', ''),
+      known_facts: str('known_facts', ''),
+      open_questions: str('open_questions', ''),
+      next_step: str('next_step', ''),
+      style_language: str('style_language', 'Noch erkennen'),
+      style_address: str('style_address', 'Noch erkennen'),
+      style_formality: str('style_formality', 'Noch erkennen'),
+      style_sentence_length: str('style_sentence_length', 'Noch erkennen'),
+      style_message_length: str('style_message_length', 'Noch erkennen'),
+      style_emoji_usage: str('style_emoji_usage', 'Noch erkennen'),
+      style_slang: str('style_slang', 'Noch erkennen'),
+      style_energy: str('style_energy', 'Noch erkennen'),
+      style_directness: str('style_directness', 'Noch erkennen'),
+      style_humor: str('style_humor', 'Noch erkennen'),
+      style_punctuation: str('style_punctuation', 'Noch erkennen'),
+      style_notes: str('style_notes', ''),
     };
   } catch {
     return null;
@@ -472,7 +737,7 @@ async function runWorkersAI(
       {
         messages,
         temperature: 0.35,
-        max_tokens: 450,
+        max_tokens: 800,
         response_format: {
           type: 'json_schema',
           json_schema: SALES_SCHEMA,
@@ -492,7 +757,7 @@ async function runWorkersAI(
       {
         role: 'system' as const,
         content:
-          'Antworte jetzt ausschließlich mit einem gültigen JSON-Objekt ohne Markdown. Felder: reply, stage, temperature, score, goal, pain_point, experience, budget, objection, summary. stage muss discovery|painpoint|goal|qualification|solution|objection|close sein. temperature muss cold|warm|hot sein. score muss 0 bis 100 sein.',
+          'Antworte ausschließlich mit gültigem JSON ohne Markdown. Pflichtfelder: reply, stage, temperature, score, goal, pain_point, experience, budget, objection, summary, known_facts, open_questions, next_step, style_language, style_address, style_formality, style_sentence_length, style_message_length, style_emoji_usage, style_slang, style_energy, style_directness, style_humor, style_punctuation, style_notes. stage: discovery|painpoint|goal|qualification|solution|objection|close. temperature: cold|warm|hot. score: 0-100.',
       },
     ];
 
@@ -501,7 +766,7 @@ async function runWorkersAI(
       {
         messages: fallbackMessages,
         temperature: 0.25,
-        max_tokens: 450,
+        max_tokens: 800,
       } as any,
     );
 
@@ -512,43 +777,142 @@ async function runWorkersAI(
   }
 }
 
+type DemoHistoryMessage = {
+  from: 'lead' | 'ai' | 'human';
+  body: string;
+  time?: string;
+};
+
+function turnMemoryJson(turn: SalesTurn) {
+  return JSON.stringify({
+    goal: turn.goal,
+    painPoint: turn.pain_point,
+    experience: turn.experience,
+    budget: turn.budget,
+    objection: turn.objection,
+    summary: turn.summary,
+    knownFacts: turn.known_facts,
+    openQuestions: turn.open_questions,
+    nextStep: turn.next_step,
+  });
+}
+
+function turnStyleJson(turn: SalesTurn) {
+  return JSON.stringify({
+    language: turn.style_language,
+    address: turn.style_address,
+    formality: turn.style_formality,
+    sentenceLength: turn.style_sentence_length,
+    messageLength: turn.style_message_length,
+    emojiUsage: turn.style_emoji_usage,
+    slang: turn.style_slang,
+    energy: turn.style_energy,
+    directness: turn.style_directness,
+    humor: turn.style_humor,
+    punctuation: turn.style_punctuation,
+    notes: turn.style_notes,
+  });
+}
+
 async function generateSalesTurn(
   env: Env,
   agent: D1Row,
-  _lead: D1Row,
+  lead: D1Row,
   history: D1Row[],
+  bootstrapMemory = false,
 ): Promise<SalesTurn | null> {
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt(agent) },
+    { role: 'system', content: leadContextPrompt(lead) },
   ];
 
-  for (const message of history.slice(-16)) {
+  // Hybrid-Kontext: Lead Memory + Style Profile + die letzten 10 echten Nachrichten.
+  // Bei einem bestehenden Lead ohne Memory darf einmalig der komplette Rohverlauf zum Backfill genutzt werden.
+  // Danach bleibt der komplette Rohverlauf zwar in D1 gespeichert, wird aber nicht mehr bei jedem Turn an die KI geschickt.
+  const contextHistory = bootstrapMemory ? history : history.slice(-10);
+  for (const message of contextHistory) {
+    const body = String(message.body || '').trim();
+    if (!body) continue;
+
     messages.push({
       role: message.direction === 'inbound' ? 'user' : 'assistant',
-      content: String(message.body || ''),
+      content: body,
     });
   }
+
+  messages.push({
+    role: 'system',
+    content:
+      'Antworte jetzt auf die letzte Lead-Nachricht. Aktualisiere gleichzeitig Lead Memory und Style Profile. ' +
+      'Spiegle den Stil natürlich, ohne künstliche Imitation. Frage nichts erneut, was bereits geklärt ist.',
+  });
 
   return runWorkersAI(env, messages);
 }
 
 async function generateDemoDraft(
   env: Env,
-  body: { stage?: string; painPoint?: string; objection?: string; message?: string },
+  body: {
+    stage?: string;
+    painPoint?: string;
+    objection?: string;
+    message?: string;
+    history?: DemoHistoryMessage[];
+    leadMemory?: Record<string, unknown>;
+    styleProfile?: Record<string, unknown>;
+  },
 ) {
   const agent = (demoBootstrap.agent || {}) as D1Row;
-  const currentMessage =
-    body.message ||
-    `Mein aktueller Painpoint ist: ${body.painPoint || 'Unklar'}. Mein Einwand ist: ${body.objection || 'Unklar'}.`;
+  const memory = body.leadMemory || {};
+  const style = body.styleProfile || {};
+
+  const pseudoLead: D1Row = {
+    goal: String(memory.goal || 'Unklar'),
+    pain_point: String(memory.painPoint || body.painPoint || 'Unklar'),
+    experience: String(memory.experience || 'Unklar'),
+    budget: String(memory.budget || 'Unklar'),
+    objection: String(memory.objection || body.objection || 'Unklar'),
+    summary: String(memory.summary || ''),
+    next_step: String(memory.nextStep || ''),
+    memory_json: JSON.stringify(memory),
+    style_profile_json: JSON.stringify(style),
+  };
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: systemPrompt(agent) },
+    { role: 'system', content: leadContextPrompt(pseudoLead) },
     {
       role: 'system',
-      content: `Die aktuelle Stage ist ungefähr: ${body.stage || 'discovery'}. Erzeuge die nächste sinnvolle DM-Antwort.`,
+      content: `Aktuelle interne Stage: ${body.stage || 'discovery'}.`,
     },
-    { role: 'user', content: currentMessage },
   ];
+
+  const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
+
+  if (history.length > 0) {
+    for (const message of history) {
+      const content = String(message.body || '').trim();
+      if (!content) continue;
+
+      messages.push({
+        role: message.from === 'lead' ? 'user' : 'assistant',
+        content,
+      });
+    }
+  } else {
+    const currentMessage =
+      body.message ||
+      `Mein aktueller Painpoint ist: ${body.painPoint || 'Unklar'}. Mein Einwand ist: ${body.objection || 'Unklar'}.`;
+
+    messages.push({ role: 'user', content: currentMessage });
+  }
+
+  messages.push({
+    role: 'system',
+    content:
+      'Erzeuge die nächste natürliche DM-Antwort. Aktualisiere Memory und Style Profile aus den vorhandenen Informationen. ' +
+      'Berücksichtige ausschließlich belegte Lead-Aussagen und vermeide wiederholte Fragen.',
+  });
 
   return runWorkersAI(env, messages);
 }
@@ -823,35 +1187,78 @@ async function processInboundMessage(
 
   if (!agent) return;
 
-  const rows = await env.DB
-    .prepare(
-      'SELECT direction,sender_type,body,created_at FROM messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT 16',
-    )
-    .bind(conversation.id)
-    .all<D1Row>();
+  const hasLeadMemory =
+    Boolean(lead.memory_json) &&
+    String(lead.memory_json).trim() !== '' &&
+    String(lead.memory_json).trim() !== '{}';
 
-  const history = (rows.results || []).reverse();
-  const turn = await generateSalesTurn(env, agent, lead, history);
+  const rows = hasLeadMemory
+    ? await env.DB
+        .prepare(
+          'SELECT direction,sender_type,body,created_at FROM messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT 10',
+        )
+        .bind(conversation.id)
+        .all<D1Row>()
+    : await env.DB
+        .prepare(
+          'SELECT direction,sender_type,body,created_at FROM messages WHERE conversation_id=? ORDER BY created_at ASC',
+        )
+        .bind(conversation.id)
+        .all<D1Row>();
+
+  const history = hasLeadMemory
+    ? (rows.results || []).reverse()
+    : (rows.results || []);
+
+  const turn = await generateSalesTurn(env, agent, lead, history, !hasLeadMemory);
 
   if (!turn?.reply?.trim()) return;
 
-  await env.DB
-    .prepare(
-      'UPDATE leads SET stage=?,temperature=?,score=?,goal=?,pain_point=?,experience=?,budget=?,objection=?,summary=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
-    )
-    .bind(
-      turn.stage,
-      turn.temperature,
-      turn.score,
-      turn.goal,
-      turn.pain_point,
-      turn.experience,
-      turn.budget,
-      turn.objection,
-      turn.summary,
-      lead.id,
-    )
-    .run();
+  const memoryJson = turnMemoryJson(turn);
+  const styleJson = turnStyleJson(turn);
+
+  try {
+    await env.DB
+      .prepare(
+        'UPDATE leads SET stage=?,temperature=?,score=?,goal=?,pain_point=?,experience=?,budget=?,objection=?,summary=?,memory_json=?,style_profile_json=?,next_step=?,memory_updated_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+      )
+      .bind(
+        turn.stage,
+        turn.temperature,
+        turn.score,
+        turn.goal,
+        turn.pain_point,
+        turn.experience,
+        turn.budget,
+        turn.objection,
+        turn.summary,
+        memoryJson,
+        styleJson,
+        turn.next_step,
+        lead.id,
+      )
+      .run();
+  } catch (error) {
+    // Backward-compatible fallback, falls Migration 0002 noch nicht ausgeführt wurde.
+    console.warn('Lead-memory columns not available yet; using legacy lead update.', error);
+    await env.DB
+      .prepare(
+        'UPDATE leads SET stage=?,temperature=?,score=?,goal=?,pain_point=?,experience=?,budget=?,objection=?,summary=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+      )
+      .bind(
+        turn.stage,
+        turn.temperature,
+        turn.score,
+        turn.goal,
+        turn.pain_point,
+        turn.experience,
+        turn.budget,
+        turn.objection,
+        turn.summary,
+        lead.id,
+      )
+      .run();
+  }
 
   await env.DB
     .prepare(
@@ -1049,6 +1456,9 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       stage?: string;
       painPoint?: string;
       objection?: string;
+      history?: DemoHistoryMessage[];
+      leadMemory?: Record<string, unknown>;
+      styleProfile?: Record<string, unknown>;
     }>();
 
     if (!body.message?.trim()) {
@@ -1158,6 +1568,9 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       painPoint?: string;
       objection?: string;
       message?: string;
+      history?: DemoHistoryMessage[];
+      leadMemory?: Record<string, unknown>;
+      styleProfile?: Record<string, unknown>;
     }>();
 
     if (!env.AI) {
@@ -1189,6 +1602,23 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
         budget: turn.budget,
         objection: turn.objection,
         summary: turn.summary,
+        knownFacts: turn.known_facts,
+        openQuestions: turn.open_questions,
+        nextStep: turn.next_step,
+        styleProfile: {
+          language: turn.style_language,
+          address: turn.style_address,
+          formality: turn.style_formality,
+          sentenceLength: turn.style_sentence_length,
+          messageLength: turn.style_message_length,
+          emojiUsage: turn.style_emoji_usage,
+          slang: turn.style_slang,
+          energy: turn.style_energy,
+          directness: turn.style_directness,
+          humor: turn.style_humor,
+          punctuation: turn.style_punctuation,
+          notes: turn.style_notes,
+        },
       },
       provider: 'cloudflare-workers-ai',
       model: aiModel(env),
