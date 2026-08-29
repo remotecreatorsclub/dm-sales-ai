@@ -9,6 +9,11 @@ interface Env {
   META_REDIRECT_URI?: string;
   META_API_VERSION?: string;
   TOKEN_ENCRYPTION_KEY?: string;
+  HUMAN_REPLY_MIN_MS?: string;
+  HUMAN_REPLY_MAX_MS?: string;
+  HUMAN_BURST_WAIT_MIN_MS?: string;
+  HUMAN_BURST_WAIT_MAX_MS?: string;
+  INSTAGRAM_TYPING_ACTIONS?: string;
 }
 
 type D1Row = Record<string, any>;
@@ -46,6 +51,41 @@ const AI_MODEL_DEFAULT = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEMO_ORG = 'org_demo';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+
+function sleep(ms:number){return new Promise<void>(resolve=>setTimeout(resolve,ms))}
+function randomInt(min:number,max:number){
+  const low=Math.ceil(min),high=Math.floor(max);
+  if(high<=low)return low;
+  const value=new Uint32Array(1);crypto.getRandomValues(value);
+  return low+(value[0]%(high-low+1));
+}
+function envInt(value:string|undefined,fallback:number){
+  const parsed=Number(value);return Number.isFinite(parsed)&&parsed>=0?Math.round(parsed):fallback;
+}
+function humanTiming(env:Env,leadText:string,replyText:string,turn:SalesTurn){
+  const minMs=envInt(env.HUMAN_REPLY_MIN_MS,4200);
+  const maxMs=Math.max(minMs,envInt(env.HUMAN_REPLY_MAX_MS,14000));
+  const readMs=900+Math.min(2600,Math.max(0,leadText.trim().length)*16)+randomInt(250,900);
+  let factor=1;
+  const formality=turn.style_formality.toLowerCase();
+  const length=turn.style_message_length.toLowerCase();
+  const energy=turn.style_energy.toLowerCase();
+  if(length.includes('kurz'))factor*=0.9;
+  if(length.includes('lang')||length.includes('ausführ'))factor*=1.08;
+  if(formality.includes('locker'))factor*=0.94;
+  if(formality.includes('formell')||formality.includes('förmlich'))factor*=1.07;
+  if(energy.includes('hoch')||energy.includes('schnell')||energy.includes('energet'))factor*=0.92;
+  const msPerChar=randomInt(58,82);
+  const typingMs=(replyText.trim().length*msPerChar)+randomInt(450,1100);
+  const target=Math.round((readMs+typingMs)*factor);
+  return Math.max(minMs,Math.min(maxMs,target));
+}
+function burstWaitMs(env:Env){
+  const minMs=envInt(env.HUMAN_BURST_WAIT_MIN_MS,1400);
+  const maxMs=Math.max(minMs,envInt(env.HUMAN_BURST_WAIT_MAX_MS,2400));
+  return randomInt(minMs,maxMs);
+}
 
 const SALES_SCHEMA = {
   type: 'object',
@@ -1092,6 +1132,59 @@ async function sendInstagramText(
   return response.json<any>();
 }
 
+async function tryInstagramSenderAction(
+  env: Env,
+  encryptedToken: string,
+  recipientId: string,
+  action: 'typing_on' | 'typing_off',
+) {
+  if (env.INSTAGRAM_TYPING_ACTIONS === 'false' || !env.TOKEN_ENCRYPTION_KEY) return false;
+
+  try {
+    const accessToken = await decryptToken(encryptedToken, env.TOKEN_ENCRYPTION_KEY);
+    const endpoint = `https://graph.instagram.com/${apiVersion(env)}/me/messages`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        sender_action: action,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`Instagram sender_action ${action} nicht akzeptiert: ${response.status}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.warn(`Instagram sender_action ${action} fehlgeschlagen.`, error);
+    return false;
+  }
+}
+
+async function latestInboundIs(
+  env: Env,
+  conversationId: string,
+  inboundMessageId: string,
+) {
+  if (!env.DB) return true;
+  const row = await env.DB
+    .prepare(
+      `SELECT c.ai_mode,
+        (SELECT m.id FROM messages m WHERE m.conversation_id=c.id AND m.direction='inbound' ORDER BY m.rowid DESC LIMIT 1) AS latest_inbound_id
+       FROM conversations c WHERE c.id=? LIMIT 1`,
+    )
+    .bind(conversationId)
+    .first<D1Row>();
+
+  return Boolean(row && row.ai_mode !== 'paused' && row.latest_inbound_id === inboundMessageId);
+}
+
 async function processInboundMessage(
   env: Env,
   accountId: string,
@@ -1100,6 +1193,7 @@ async function processInboundMessage(
   text: string,
 ) {
   if (!env.DB || !text.trim()) return;
+  const processingStartedAt=Date.now();
 
   const account = await env.DB
     .prepare(
@@ -1158,6 +1252,7 @@ async function processInboundMessage(
 
   if (!conversation) return;
 
+  const inboundMessageId=crypto.randomUUID();
   await env.DB
     .prepare(
       `INSERT OR IGNORE INTO messages
@@ -1165,7 +1260,7 @@ async function processInboundMessage(
        VALUES (?,?,?,?,?,?,?,?)`,
     )
     .bind(
-      crypto.randomUUID(),
+      inboundMessageId,
       account.organization_id,
       conversation.id,
       externalMessageId || null,
@@ -1178,6 +1273,13 @@ async function processInboundMessage(
 
   if (conversation.ai_mode === 'paused') return;
 
+  // Kurze Nachrichtenschübe zusammenfassen: Wenn der Lead direkt noch etwas hinterherschickt,
+  // antwortet nur der neueste Job. Das verhindert unnatürliche Zwischenantworten.
+  await sleep(burstWaitMs(env));
+  if (!(await latestInboundIs(env, conversation.id, inboundMessageId))) return;
+
+  await tryInstagramSenderAction(env, account.access_token_encrypted, senderId, 'typing_on');
+
   const agent = await env.DB
     .prepare(
       'SELECT * FROM ai_agents WHERE organization_id=? AND active=1 ORDER BY updated_at DESC LIMIT 1',
@@ -1185,7 +1287,10 @@ async function processInboundMessage(
     .bind(account.organization_id)
     .first<D1Row>();
 
-  if (!agent) return;
+  if (!agent) {
+    await tryInstagramSenderAction(env, account.access_token_encrypted, senderId, 'typing_off');
+    return;
+  }
 
   const hasLeadMemory =
     Boolean(lead.memory_json) &&
@@ -1212,7 +1317,10 @@ async function processInboundMessage(
 
   const turn = await generateSalesTurn(env, agent, lead, history, !hasLeadMemory);
 
-  if (!turn?.reply?.trim()) return;
+  if (!turn?.reply?.trim()) {
+    await tryInstagramSenderAction(env, account.access_token_encrypted, senderId, 'typing_off');
+    return;
+  }
 
   const memoryJson = turnMemoryJson(turn);
   const styleJson = turnStyleJson(turn);
@@ -1267,7 +1375,19 @@ async function processInboundMessage(
     .bind(turn.stage, conversation.id)
     .run();
 
+  const targetTotalMs=humanTiming(env,text,turn.reply,turn);
+  const remainingMs=Math.max(0,targetTotalMs-(Date.now()-processingStartedAt));
+  if(remainingMs>0) await sleep(remainingMs);
+
+  // Wenn während des Denkens/Schreibens noch eine neue Lead-Nachricht kam oder ein Mensch übernommen hat,
+  // wird diese alte Antwort verworfen. Der neueste Turn übernimmt den gesamten aktualisierten Kontext.
+  if (!(await latestInboundIs(env, conversation.id, inboundMessageId))) {
+    await tryInstagramSenderAction(env, account.access_token_encrypted, senderId, 'typing_off');
+    return;
+  }
+
   try {
+    await tryInstagramSenderAction(env, account.access_token_encrypted, senderId, 'typing_off');
     const sent = await sendInstagramText(
       env,
       account.access_token_encrypted,
@@ -1293,11 +1413,12 @@ async function processInboundMessage(
       )
       .run();
   } catch (error: any) {
+    await tryInstagramSenderAction(env, account.access_token_encrypted, senderId, 'typing_off');
     console.error('Auto send failed:', error?.message || error);
   }
 }
 
-async function handleWebhook(request: Request, env: Env) {
+async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext) {
   const raw = await request.text();
   let payload: any;
 
@@ -1346,7 +1467,11 @@ async function handleWebhook(request: Request, env: Env) {
     }
   }
 
-  await Promise.allSettled(jobs);
+  if (ctx && jobs.length) {
+    ctx.waitUntil(Promise.allSettled(jobs).then(() => undefined));
+  } else {
+    await Promise.allSettled(jobs);
+  }
   return json({ received: true });
 }
 
@@ -1425,7 +1550,7 @@ async function manualReply(env: Env, conversationId: string, message: string) {
   };
 }
 
-async function handleApi(request: Request, env: Env): Promise<Response> {
+async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
 
@@ -1438,6 +1563,10 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       ai: Boolean(env.AI),
       aiProvider: 'cloudflare-workers-ai',
       aiModel: aiModel(env),
+      humanPacing: true,
+      humanReplyMinMs: envInt(env.HUMAN_REPLY_MIN_MS, 4200),
+      humanReplyMaxMs: envInt(env.HUMAN_REPLY_MAX_MS, 14000),
+      instagramTypingActions: env.INSTAGRAM_TYPING_ACTIONS !== 'false',
       meta: Boolean(env.META_APP_ID && env.META_APP_SECRET),
     });
   }
@@ -1511,7 +1640,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   }
 
   if (path === '/api/meta/webhook' && request.method === 'POST') {
-    return handleWebhook(request, env);
+    return handleWebhook(request, env, ctx);
   }
 
   if (path === '/api/agent/settings' && request.method === 'POST') {
@@ -1629,11 +1758,11 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith('/api/')) {
-      return handleApi(request, env);
+      return handleApi(request, env, ctx);
     }
 
     return new Response('Not found', { status: 404 });
