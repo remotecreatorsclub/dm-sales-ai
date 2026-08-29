@@ -666,6 +666,236 @@ Neben der sichtbaren DM-Antwort musst du den Lead-Zustand und das Style Profile 
 Der Score ist nur eine interne Fit-/Kaufbereitschaftsschätzung, keine Gewissheit.`;
 }
 
+
+function analysisSystemPrompt(agent: D1Row) {
+  return `Du bist die interne Lead-Analyse eines Instagram-Sales-Agents.
+
+DEINE AUFGABE:
+Analysiere ausschließlich den Gesprächsverlauf und aktualisiere den strukturierten Lead-Zustand.
+Du schreibst NICHT die sichtbare Kundenantwort. Setze das Feld "reply" immer exakt auf "ANALYSIS_ONLY".
+
+ANGEBOT
+Name: ${agent.offer_name || agent.offerName || ''}
+Preis: ${agent.price_text || agent.price || ''}
+Zielgruppe: ${agent.audience || ''}
+Painpoints: ${agent.pain_points || agent.painPoints || ''}
+Gewünschte Ergebnisse: ${agent.outcomes || ''}
+Typische Einwände: ${agent.objections || ''}
+
+EXTRAKTIONSREGELN
+- Verwende nur Informationen, die aus den Lead-Nachrichten oder dem bestehenden Memory belegbar sind.
+- Nichts erfinden.
+- Unbekannt bleibt "Unklar".
+- Neuere klare Aussagen überschreiben ältere widersprüchliche Aussagen.
+- "known_facts" muss reiner Text mit maximal 8 Zeilen sein. Jede Zeile beginnt mit "- ". KEIN JSON, keine eckigen Klammern.
+- "open_questions" muss reiner Text mit maximal 4 Zeilen sein. Jede Zeile beginnt mit "- ". KEIN JSON, keine eckigen Klammern.
+- "summary" maximal 3 kurze Sätze.
+- "next_step" genau ein konkreter nächster Gesprächsschritt.
+- Style Profile ausschließlich aus der Art ableiten, wie der Lead tatsächlich schreibt.
+
+STAGE-LOGIK
+- discovery: bisher nur Interesse/Neugier oder Ausgangslage wird geklärt.
+- painpoint: ein konkretes Problem/Hindernis wurde erkennbar.
+- goal: ein konkretes gewünschtes Ergebnis/Ziel ist klar und steht im Fokus.
+- qualification: Ziel + Problem + grundlegender Fit sind ausreichend klar.
+- solution: die passende Lösung wird bereits konkret besprochen.
+- objection: ein konkreter Kauf-/Umsetzungseinwand ist offen.
+- close: der Lead zeigt klare Abschlussbereitschaft oder fragt nach Start/Checkout.
+
+SCORE-RICHTWERT
+- 0-10: nur allgemeine Neugier.
+- 15-30: relevante Ausgangslage oder grobes Ziel erkennbar.
+- 35-55: klares Ziel oder klarer Painpoint + erkennbarer Fit.
+- 60-75: konkrete Lösungs-/Preisfragen oder starker Fit.
+- 76-90: echter Einwand bei weiterhin erkennbarem Interesse.
+- 91-100: klare Abschlussabsicht / fragt nach Start oder Checkout.
+Der Score ist eine vorsichtige interne Einschätzung, keine Gewissheit.
+
+WICHTIG:
+Wenn der Lead z. B. sagt "Ich möchte mir neben meinem Job online was aufbauen, weiß aber nicht womit ich anfangen soll", dann sind mindestens Ziel und Painpoint nicht mehr "Unklar".`;
+}
+
+function naturalReplySystemPrompt(agent: D1Row, lead: D1Row, firstContact: boolean) {
+  const context = leadContextPrompt(lead);
+
+  return `Du schreibst NUR die nächste sichtbare Instagram-DM eines menschlich wirkenden Verkäufers.
+Kein JSON. Keine Analyse. Keine Labels. Nur die Nachricht, die der Lead sehen soll.
+
+ANGEBOT
+Name: ${agent.offer_name || agent.offerName || ''}
+Preis: ${agent.price_text || agent.price || ''}
+Zielgruppe: ${agent.audience || ''}
+Painpoints: ${agent.pain_points || agent.painPoints || ''}
+Gewünschte Ergebnisse: ${agent.outcomes || ''}
+Typische Einwände: ${agent.objections || ''}
+Checkout: ${agent.checkout_url || agent.checkoutUrl || ''}
+Termin: ${agent.booking_url || agent.bookingUrl || ''}
+Grundton: ${agent.tone || 'Natürlich, direkt, freundlich und kurz.'}
+
+${context}
+
+HARTE REGELN FÜR DIE SICHTBARE DM
+1. Antworte IMMER auf die allerletzte Lead-Nachricht, nicht auf eine ältere Nachricht.
+2. Wiederhole niemals einfach eine frühere AI-Antwort aus dem Verlauf.
+3. Greife neue Informationen des Leads konkret auf.
+4. Wenn der Lead eine direkte Frage stellt, beantworte sie zuerst.
+5. Maximal 1-2 kurze Sätze und höchstens eine Frage.
+6. Keine Landingpage-Sprache, kein Monolog, kein künstlicher Pitch.
+7. Kein "Vielen Dank", "Ich bin froh, dass...", "Ich verstehe, dass..." oder andere generische Bot-Floskeln.
+8. Sprich direkt mit dem Lead.
+9. "du/dein/dir/dich" im Lead => konsequent duzen. "Sie/Ihnen/Ihr" => konsequent siezen.
+10. Keine bereits geklärte Frage erneut stellen.
+11. Emojis nur, wenn sie zum Stil des Leads passen.
+12. Rechtschreibfehler nicht künstlich kopieren.
+13. Keine erfundenen Fakten, Garantien, falsche Knappheit oder Druck.
+
+${firstContact ? `ERSTKONTAKT:
+- Nicht pitchen.
+- Bei "Was ist das?", "Wie funktioniert das?" oder "Worum geht's?" zuerst in EINEM einfachen Satz erklären, was das Angebot im Kern macht.
+- Danach höchstens eine natürliche Discovery-Frage.
+- Preis/Checkout nicht ungefragt nennen.` : `LAUFENDES GESPRÄCH:
+- Nutze den bisherigen Verlauf.
+- Wenn der Lead gerade Ziel, Problem oder Einwand genannt hat, reagiere genau darauf.
+- Bewege das Gespräch nur einen sinnvollen Schritt weiter.`}
+
+GUTE TONALITÄT:
+Locker, konkret und wie eine echte DM. Lieber:
+"Okay, dann ist dein Ziel eigentlich schon ziemlich klar. Was fehlt dir gerade am meisten, um loszulegen?"
+statt:
+"Ich bin froh, dass du mein Reel gesehen hast!"
+
+Antworte jetzt ausschließlich mit der nächsten sichtbaren DM.`;
+}
+
+function normalizeListText(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((item) => `- ${item.replace(/^-+\s*/, '')}`)
+      .join('\n');
+  }
+
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return normalizeListText(parsed);
+    } catch {
+      // Plain text fallback below.
+    }
+  }
+
+  return raw;
+}
+
+function cleanNaturalReply(value: unknown) {
+  let raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  raw = stripCodeFence(raw);
+
+  // Defensive fallback if a model unexpectedly returns {"reply":"..."}.
+  if (raw.startsWith('{') && raw.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.reply === 'string') raw = parsed.reply.trim();
+    } catch {
+      // Keep raw text.
+    }
+  }
+
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    raw = raw.slice(1, -1).trim();
+  }
+
+  return raw;
+}
+
+function safeStage(value: unknown): SalesTurn['stage'] {
+  const stage = String(value || '');
+  return ['discovery','painpoint','goal','qualification','solution','objection','close'].includes(stage)
+    ? stage as SalesTurn['stage']
+    : 'discovery';
+}
+
+function safeTemperature(value: unknown): SalesTurn['temperature'] {
+  const temp = String(value || '');
+  return ['cold','warm','hot'].includes(temp)
+    ? temp as SalesTurn['temperature']
+    : 'cold';
+}
+
+function fallbackTurnFromLead(lead: D1Row, reply: string): SalesTurn {
+  const memory = parseJsonObject(lead.memory_json || lead.memoryJson);
+  const style = parseJsonObject(lead.style_profile_json || lead.styleProfile);
+
+  return {
+    reply,
+    stage: safeStage(lead.stage || lead.current_stage),
+    temperature: safeTemperature(lead.temperature),
+    score: Math.max(0, Math.min(100, Number(lead.score || 0))),
+    goal: String(memory.goal || lead.goal || 'Unklar'),
+    pain_point: String(memory.painPoint || memory.pain_point || lead.pain_point || lead.painPoint || 'Unklar'),
+    experience: String(memory.experience || lead.experience || 'Unklar'),
+    budget: String(memory.budget || lead.budget || 'Unklar'),
+    objection: String(memory.objection || lead.objection || 'Unklar'),
+    summary: String(memory.summary || lead.summary || ''),
+    known_facts: normalizeListText(memory.knownFacts || memory.known_facts || ''),
+    open_questions: normalizeListText(memory.openQuestions || memory.open_questions || ''),
+    next_step: String(memory.nextStep || memory.next_step || lead.next_step || 'Natürlich weiter verstehen'),
+    style_language: String(style.language || 'Noch erkennen'),
+    style_address: String(style.address || 'Noch erkennen'),
+    style_formality: String(style.formality || 'Noch erkennen'),
+    style_sentence_length: String(style.sentenceLength || style.sentence_length || 'Noch erkennen'),
+    style_message_length: String(style.messageLength || style.message_length || 'Noch erkennen'),
+    style_emoji_usage: String(style.emojiUsage || style.emoji_usage || 'Noch erkennen'),
+    style_slang: String(style.slang || 'Noch erkennen'),
+    style_energy: String(style.energy || 'Noch erkennen'),
+    style_directness: String(style.directness || 'Noch erkennen'),
+    style_humor: String(style.humor || 'Noch erkennen'),
+    style_punctuation: String(style.punctuation || 'Noch erkennen'),
+    style_notes: String(style.notes || ''),
+  };
+}
+
+async function runNaturalReply(
+  env: Env,
+  agent: D1Row,
+  lead: D1Row,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  firstContact: boolean,
+) {
+  if (!env.AI) return '';
+
+  try {
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: naturalReplySystemPrompt(agent, lead, firstContact) },
+      ...history,
+    ];
+
+    const result: any = await env.AI.run(
+      aiModel(env) as any,
+      {
+        messages,
+        temperature: 0.55,
+        max_tokens: 180,
+      } as any,
+    );
+
+    return cleanNaturalReply(extractWorkersAIValue(result));
+  } catch (error) {
+    console.error('Natural reply generation failed:', error);
+    return '';
+  }
+}
+
 function parseJsonObject(value: unknown): Record<string, any> {
   if (!value) return {};
   if (typeof value === 'object') return value as Record<string, any>;
@@ -781,8 +1011,8 @@ function parseSalesTurn(value: unknown): SalesTurn | null {
       budget: str('budget'),
       objection: str('objection'),
       summary: str('summary', ''),
-      known_facts: str('known_facts', ''),
-      open_questions: str('open_questions', ''),
+      known_facts: normalizeListText(row.known_facts),
+      open_questions: normalizeListText(row.open_questions),
       next_step: str('next_step', ''),
       style_language: str('style_language', 'Noch erkennen'),
       style_address: str('style_address', 'Noch erkennen'),
@@ -815,8 +1045,8 @@ async function runWorkersAI(
       model as any,
       {
         messages,
-        temperature: 0.35,
-        max_tokens: 800,
+        temperature: 0.2,
+        max_tokens: 620,
         response_format: {
           type: 'json_schema',
           json_schema: SALES_SCHEMA,
@@ -844,8 +1074,8 @@ async function runWorkersAI(
       model as any,
       {
         messages: fallbackMessages,
-        temperature: 0.25,
-        max_tokens: 800,
+        temperature: 0.15,
+        max_tokens: 620,
       } as any,
     );
 
@@ -900,33 +1130,50 @@ async function generateSalesTurn(
   history: D1Row[],
   bootstrapMemory = false,
 ): Promise<SalesTurn | null> {
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: systemPrompt(agent) },
+  const contextHistory = bootstrapMemory ? history : history.slice(-10);
+
+  const analysisMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: analysisSystemPrompt(agent) },
     { role: 'system', content: leadContextPrompt(lead) },
   ];
 
-  // Hybrid-Kontext: Lead Memory + Style Profile + die letzten 10 echten Nachrichten.
-  // Bei einem bestehenden Lead ohne Memory darf einmalig der komplette Rohverlauf zum Backfill genutzt werden.
-  // Danach bleibt der komplette Rohverlauf zwar in D1 gespeichert, wird aber nicht mehr bei jedem Turn an die KI geschickt.
-  const contextHistory = bootstrapMemory ? history : history.slice(-10);
+  const replyHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  let leadMessageCount = 0;
+
   for (const message of contextHistory) {
     const body = String(message.body || '').trim();
     if (!body) continue;
 
-    messages.push({
-      role: message.direction === 'inbound' ? 'user' : 'assistant',
-      content: body,
-    });
+    const isLead = message.direction === 'inbound';
+    if (isLead) leadMessageCount += 1;
+
+    const role = isLead ? 'user' as const : 'assistant' as const;
+    analysisMessages.push({ role, content: body });
+    replyHistory.push({ role, content: body });
   }
 
-  messages.push({
+  analysisMessages.push({
     role: 'system',
     content:
-      'Antworte jetzt auf die letzte Lead-Nachricht. Aktualisiere gleichzeitig Lead Memory und Style Profile. ' +
-      'Spiegle den Stil natürlich, ohne künstliche Imitation. Frage nichts erneut, was bereits geklärt ist.',
+      'Analysiere jetzt den aktuellen Stand nach der allerletzten Lead-Nachricht. ' +
+      'Setze reply exakt auf ANALYSIS_ONLY. Aktualisiere Ziel, Painpoint, Stage, Score, Memory und Style Profile. ' +
+      'known_facts und open_questions müssen normale "- "-Stichpunkte sein, niemals JSON-Arrays.',
   });
 
-  return runWorkersAI(env, messages);
+  const firstContact = leadMessageCount <= 1;
+
+  const [analysis, naturalReply] = await Promise.all([
+    runWorkersAI(env, analysisMessages),
+    runNaturalReply(env, agent, lead, replyHistory, firstContact),
+  ]);
+
+  if (!analysis && !naturalReply) return null;
+
+  const turn = analysis || fallbackTurnFromLead(lead, naturalReply);
+  turn.reply = naturalReply || turn.reply;
+
+  if (!turn.reply || turn.reply === 'ANALYSIS_ONLY') return null;
+  return turn;
 }
 
 async function activeDemoAgent(env: Env): Promise<D1Row> {
@@ -965,6 +1212,9 @@ async function generateDemoDraft(
   const style = body.styleProfile || {};
 
   const pseudoLead: D1Row = {
+    stage: body.stage || 'discovery',
+    temperature: 'cold',
+    score: 0,
     goal: String(memory.goal || 'Unklar'),
     pain_point: String(memory.painPoint || body.painPoint || 'Unklar'),
     experience: String(memory.experience || 'Unklar'),
@@ -976,53 +1226,60 @@ async function generateDemoDraft(
     style_profile_json: JSON.stringify(style),
   };
 
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: systemPrompt(agent) },
+  const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
+  const replyHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const analysisMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: analysisSystemPrompt(agent) },
     { role: 'system', content: leadContextPrompt(pseudoLead) },
-    {
-      role: 'system',
-      content: `Aktuelle interne Stage: ${body.stage || 'discovery'}.`,
-    },
+    { role: 'system', content: `Aktuelle interne Stage vor dieser Nachricht: ${body.stage || 'discovery'}.` },
   ];
 
-  const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
-  const leadMessageCount = history.filter((message) => message.from === 'lead').length;
-
-  messages.push({
-    role: 'system',
-    content:
-      leadMessageCount <= 1
-        ? 'Dies ist Erstkontakt bzw. die erste Lead-Nachricht. HARTE REGEL: Frage zuerst kurz beantworten, nicht pitchen, direkt zum Lead sprechen und danach höchstens eine natürliche Discovery-Frage stellen.'
-        : 'Dies ist ein laufendes Gespräch. Nutze Memory und Verlauf, wiederhole keine bereits geklärten Fragen und halte die erkannte Anrede konsequent ein.',
-  });
+  let leadMessageCount = 0;
 
   if (history.length > 0) {
     for (const message of history) {
       const content = String(message.body || '').trim();
       if (!content) continue;
 
-      messages.push({
-        role: message.from === 'lead' ? 'user' : 'assistant',
-        content,
-      });
+      const isLead = message.from === 'lead';
+      if (isLead) leadMessageCount += 1;
+
+      const role = isLead ? 'user' as const : 'assistant' as const;
+      analysisMessages.push({ role, content });
+      replyHistory.push({ role, content });
     }
   } else {
     const currentMessage =
       body.message ||
       `Mein aktueller Painpoint ist: ${body.painPoint || 'Unklar'}. Mein Einwand ist: ${body.objection || 'Unklar'}.`;
 
-    messages.push({ role: 'user', content: currentMessage });
+    leadMessageCount = 1;
+    analysisMessages.push({ role: 'user', content: currentMessage });
+    replyHistory.push({ role: 'user', content: currentMessage });
   }
 
-  messages.push({
+  analysisMessages.push({
     role: 'system',
     content:
-      'Erzeuge jetzt die nächste natürliche DM-Antwort. Aktualisiere Memory und Style Profile aus den vorhandenen Informationen. ' +
-      'Berücksichtige ausschließlich belegte Lead-Aussagen. Die erkannte du/Sie-Anrede ist bindend. ' +
-      'Sprich direkt zum Lead, vermeide distanzierte Drittpersonen-Pitches und frage nichts erneut, was bereits geklärt ist.',
+      'Analysiere jetzt ausschließlich den Lead-Zustand nach der letzten Lead-Nachricht. ' +
+      'Setze reply exakt auf ANALYSIS_ONLY. Wenn der Lead Ziel oder Problem genannt hat, dürfen diese Felder nicht Unklar bleiben. ' +
+      'known_facts und open_questions als normale "- "-Stichpunkte, niemals als JSON-Array.',
   });
 
-  return runWorkersAI(env, messages);
+  const firstContact = leadMessageCount <= 1;
+
+  const [analysis, naturalReply] = await Promise.all([
+    runWorkersAI(env, analysisMessages),
+    runNaturalReply(env, agent, pseudoLead, replyHistory, firstContact),
+  ]);
+
+  if (!analysis && !naturalReply) return null;
+
+  const turn = analysis || fallbackTurnFromLead(pseudoLead, naturalReply);
+  turn.reply = naturalReply || turn.reply;
+
+  if (!turn.reply || turn.reply === 'ANALYSIS_ONLY') return null;
+  return turn;
 }
 
 function oauthStart(request: Request, env: Env) {
