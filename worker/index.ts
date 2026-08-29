@@ -32,6 +32,13 @@ type SalesTurn = {
   known_facts: string;
   open_questions: string;
   next_step: string;
+  lead_intent: string;
+  reply_mode: string;
+  reply_goal: string;
+  must_answer: string;
+  should_ask_question: boolean;
+  question_goal: string;
+  should_send_checkout: boolean;
   style_language: string;
   style_address: string;
   style_formality: string;
@@ -107,6 +114,13 @@ const SALES_SCHEMA = {
     known_facts: { type: 'string' },
     open_questions: { type: 'string' },
     next_step: { type: 'string' },
+    lead_intent: { type: 'string' },
+    reply_mode: { type: 'string' },
+    reply_goal: { type: 'string' },
+    must_answer: { type: 'string' },
+    should_ask_question: { type: 'boolean' },
+    question_goal: { type: 'string' },
+    should_send_checkout: { type: 'boolean' },
     style_language: { type: 'string' },
     style_address: { type: 'string' },
     style_formality: { type: 'string' },
@@ -134,6 +148,13 @@ const SALES_SCHEMA = {
     'known_facts',
     'open_questions',
     'next_step',
+    'lead_intent',
+    'reply_mode',
+    'reply_goal',
+    'must_answer',
+    'should_ask_question',
+    'question_goal',
+    'should_send_checkout',
     'style_language',
     'style_address',
     'style_formality',
@@ -445,6 +466,9 @@ async function bootstrap(env: Env) {
       checkoutUrl: agent.checkout_url || '',
       bookingUrl: agent.booking_url || '',
       tone: agent.tone || '',
+      voiceExamples: agent.system_instructions || '',
+      salesRules: agent.qualification_rules || '',
+      guardrails: agent.guardrails || '',
     };
   }
 
@@ -477,19 +501,22 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
     String(body.checkoutUrl || ''),
     String(body.bookingUrl || ''),
     String(body.tone || 'Natürlich, kurz, menschlich'),
+    String(body.voiceExamples || ''),
+    String(body.salesRules || ''),
+    String(body.guardrails || ''),
   ];
 
   if (existing) {
     await env.DB
       .prepare(
-        'UPDATE ai_agents SET name=?,active=?,offer_name=?,offer_description=?,price_text=?,audience=?,pain_points=?,outcomes=?,objections=?,checkout_url=?,booking_url=?,tone=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        'UPDATE ai_agents SET name=?,active=?,offer_name=?,offer_description=?,price_text=?,audience=?,pain_points=?,outcomes=?,objections=?,checkout_url=?,booking_url=?,tone=?,system_instructions=?,qualification_rules=?,guardrails=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
       )
       .bind(...values, existing.id)
       .run();
   } else {
     await env.DB
       .prepare(
-        'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,offer_description,price_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,offer_description,price_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone,system_instructions,qualification_rules,guardrails) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .bind(crypto.randomUUID(), DEMO_ORG, ...values)
       .run();
@@ -718,6 +745,60 @@ SCORE-RICHTWERT
 - 91-100: klare Abschlussabsicht / fragt nach Start oder Checkout.
 Der Score ist eine vorsichtige interne Einschätzung, keine Gewissheit.
 
+GESPRÄCHSPLANUNG — SEHR WICHTIG
+Fülle zusätzlich diese Felder aus:
+
+lead_intent:
+Beschreibe knapp, was die ALLERLETZTE Lead-Nachricht gerade will, z. B.
+- erstkontakt
+- produktfrage
+- wie_funktioniert_es
+- preisfrage
+- zahlungsfrage
+- einwand
+- erfahrung
+- ziel
+- painpoint
+- kurze_zustimmung
+- start_absicht
+- sonstiges
+
+reply_mode:
+Einer dieser Werte:
+- answer = direkte Frage sachlich beantworten
+- acknowledge = neue Aussage kurz menschlich aufnehmen
+- qualify = genau eine wirklich notwendige Information erfragen
+- clarify = nur wenn die Nachricht tatsächlich unklar ist
+- objection = konkreten Einwand behandeln
+- close = bei klarer Start-/Kaufabsicht direkt zum nächsten Schritt führen
+
+reply_goal:
+Ein kurzer konkreter Satz, was die nächste sichtbare Antwort erreichen soll.
+
+must_answer:
+Wenn der Lead eine direkte Frage stellt, schreibe hier die Information, die zwingend beantwortet werden muss.
+Wenn der Lead nur "ja", "ja gerne", "okay", "gern" o. ä. schreibt, bezieht sich das auf die unmittelbar vorherige AI-Frage oder das vorherige Angebot. Dann steht hier, WAS die AI zuvor versprochen hat zu erklären. Thema NICHT wechseln.
+Sonst: "Keine".
+
+should_ask_question:
+Nur true, wenn eine Frage wirklich nötig ist, um sinnvoll weiterzukommen.
+Nicht automatisch nach jeder Nachricht fragen.
+
+question_goal:
+Wenn should_ask_question=true: Welche EINE Information soll die Frage klären?
+Sonst: "Keine".
+
+should_send_checkout:
+Nur true, wenn der Lead klar sagt, dass er starten/kaufen will oder ausdrücklich nach dem Checkout/Start-Link fragt.
+
+WICHTIGE PLANUNGSREGELN:
+- Ein kurzes "ja gerne" ist eine Zustimmung zur vorherigen AI-Frage. Erfülle das Versprechen zuerst. Stelle NICHT direkt wieder eine neue Erlaubnisfrage.
+- Wenn die letzten zwei AI-Nachrichten bereits Fragen waren, bevorzuge eine wertgebende Antwort ohne neue Frage.
+- Frage den Lead nicht nach der Lösung seines eigenen Problems. Beispiel schlecht: "Was denkst du, wäre der erste Schritt?"
+- Bei einer konkreten Produktfrage hat die Antwort Vorrang vor weiterer Qualifizierung.
+- Bei klarer Startabsicht: close, should_send_checkout=true, keine weitere Qualifizierungsfrage.
+- Bei "Ich weiß nicht wo ich anfangen soll" ist das ein Painpoint, kein Anlass für einen sofortigen Produktpitch.
+
 WICHTIG:
 Wenn der Lead z. B. sagt "Ich möchte mir neben meinem Job online was aufbauen, weiß aber nicht womit ich anfangen soll", dann sind mindestens Ziel und Painpoint nicht mehr "Unklar".`;
 }
@@ -744,6 +825,20 @@ Checkout: ${agent.checkout_url || agent.checkoutUrl || ''}
 Termin: ${agent.booking_url || agent.bookingUrl || ''}
 Grundton: ${agent.tone || 'Natürlich, direkt, freundlich und kurz.'}
 
+SCHREIBSTIL-BEISPIELE DES ACCOUNT-INHABERS
+${agent.system_instructions || agent.voiceExamples || 'Keine Beispiele hinterlegt.'}
+
+ZUSÄTZLICHE SALES-REGELN
+${agent.qualification_rules || agent.salesRules || 'Keine zusätzlichen Regeln hinterlegt.'}
+
+ZUSÄTZLICHE GUARDRAILS
+${agent.guardrails || 'Keine zusätzlichen Guardrails hinterlegt.'}
+
+WICHTIG ZU DEN SCHREIBSTIL-BEISPIELEN:
+- Nutze sie NUR als Referenz für Rhythmus, Wortwahl, Kürze und Ton.
+- Übernimm daraus KEINE Produktfakten, Preise oder Versprechen.
+- Kopiere keine Beispielnachricht wörtlich, wenn sie nicht zum aktuellen Kontext passt.
+
 WICHTIGE GROUNDING-REGEL:
 - Die Knowledge Base und die übrigen Angebotsfelder sind die einzige Wahrheit für konkrete Produktfragen.
 - Erfinde KEINE Produktkategorie, Funktion, Leistung, Verdienstmöglichkeit, Zahlungsoption, Modulzahl oder Eigenschaft, die dort nicht steht.
@@ -757,6 +852,22 @@ WICHTIGE GROUNDING-REGEL:
 ${context}
 
 AKTUELLE INTERNE STAGE: ${currentStage}
+
+VERBINDLICHER REPLY-PLAN
+Lead-Intent: ${lead.lead_intent || 'sonstiges'}
+Reply-Modus: ${lead.reply_mode || 'qualify'}
+Ziel dieser Antwort: ${lead.reply_goal || lead.next_step || 'Natürlich weiterführen'}
+Zwingend beantworten: ${lead.must_answer || 'Keine'}
+Neue Frage stellen: ${lead.should_ask_question === true ? 'JA' : 'NEIN'}
+Ziel der Frage: ${lead.question_goal || 'Keine'}
+Checkout senden: ${lead.should_send_checkout === true ? 'JA' : 'NEIN'}
+
+Der Reply-Plan ist bindend:
+- Wenn "Neue Frage stellen: NEIN", ende NICHT mit einer neuen Frage.
+- Wenn "Zwingend beantworten" nicht "Keine" ist, beantworte genau das zuerst.
+- Wenn "Checkout senden: JA" und ein Checkout-Link hinterlegt ist, sende ihn direkt und ohne weitere Qualifizierung.
+- Wenn Reply-Modus "answer" ist, beantworte die Frage; verkaufe nicht zusätzlich ungefragt.
+- Wenn Reply-Modus "acknowledge" ist, reagiere menschlich auf die Aussage, ohne sie als "Problem", "Einwand" oder "großartig" zu labeln.
 
 HARTE REGELN FÜR DIE SICHTBARE DM
 1. Antworte IMMER auf die allerletzte Lead-Nachricht, nicht auf eine ältere Nachricht.
@@ -775,6 +886,12 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
 15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
 16. Bei konkreten Produktfragen wie "Wie verdient man damit?", "Was ist enthalten?" oder "Welche Wege gibt es?" hat die sachlich korrekte Antwort aus der Knowledge Base Vorrang vor einer weiteren Qualifizierungsfrage.
+17. Sag NICHT "Das ist okay", "Das ist ein großes Problem", "speziell für Menschen wie dich", "umfassendes System" oder "Viele Leute ...". Das wirkt wie Bot-/Sales-Sprache.
+18. Verwende "Möchtest du wissen ...?", "Willst du wissen ...?" oder "Soll ich dir erklären ...?" nur ausnahmsweise. Wenn der Lead bereits "ja/ja gerne/okay" auf so eine Frage geantwortet hat, MUSST du die versprochene Information liefern und darfst nicht erneut um Erlaubnis fragen.
+19. Wiederhole den Angebotsnamen nicht in jeder Nachricht. Wenn er im direkten Kontext bereits klar ist, sprich natürlicher mit "das", "dabei" oder direkt über den Inhalt.
+20. Wiederhole auch Formulierungen wie "Schritt für Schritt" nicht ständig. Variiere natürlich.
+21. Keine künstliche Euphorie. Ein normales "Okay", "Ja", "Genau" oder direkte Antwort wirkt menschlicher als Lob.
+22. Wenn der Lead sagt, dass er starten/kaufen will, antworte knapp und handlungsorientiert. Kein "Großartig!", kein "Wenn du bereit bist", kein erneuter Pitch.
 
 ${firstContact ? `ERSTKONTAKT:
 - Nicht pitchen.
@@ -887,6 +1004,13 @@ function fallbackTurnFromLead(lead: D1Row, reply: string): SalesTurn {
     known_facts: normalizeListText(memory.knownFacts || memory.known_facts || ''),
     open_questions: normalizeListText(memory.openQuestions || memory.open_questions || ''),
     next_step: String(memory.nextStep || memory.next_step || lead.next_step || 'Natürlich weiter verstehen'),
+    lead_intent: String(lead.lead_intent || 'sonstiges'),
+    reply_mode: String(lead.reply_mode || 'qualify'),
+    reply_goal: String(lead.reply_goal || ''),
+    must_answer: String(lead.must_answer || 'Keine'),
+    should_ask_question: Boolean(lead.should_ask_question),
+    question_goal: String(lead.question_goal || 'Keine'),
+    should_send_checkout: Boolean(lead.should_send_checkout),
     style_language: String(style.language || 'Noch erkennen'),
     style_address: String(style.address || 'Noch erkennen'),
     style_formality: String(style.formality || 'Noch erkennen'),
@@ -913,8 +1037,23 @@ async function runNaturalReply(
   if (!env.AI) return '';
 
   try {
+    const latestLead = [...history].reverse().find((m) => m.role === 'user')?.content || '';
+    const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
+    const recentAI = history.filter((m) => m.role === 'assistant').slice(-2);
+    const recentQuestionCount = recentAI.filter((m) => /\?\s*$/.test(m.content.trim())).length;
+    const shortConsent = /^\s*(ja|ja gern|ja gerne|gerne|gern|okay|ok|klar|genau|mach|bitte|yes|sure)[.! ]*$/i.test(latestLead);
+
+    const continuity = `UNMITTELBARER GESPRÄCHSKONTEXT
+Vorherige AI-Nachricht: ${previousAI || 'Keine'}
+Letzte Lead-Nachricht: ${latestLead || 'Keine'}
+Fragen in den letzten 2 AI-Nachrichten: ${recentQuestionCount}
+
+${shortConsent && previousAI ? `WICHTIG: Die letzte Lead-Nachricht ist eine kurze Zustimmung zur vorherigen AI-Nachricht. Erfülle jetzt exakt das, was du unmittelbar davor angeboten oder gefragt hast. Wechsle NICHT das Thema und stelle NICHT wieder eine Erlaubnisfrage.` : ''}
+${recentQuestionCount >= 2 ? 'Die letzten AI-Nachrichten waren bereits sehr frage-lastig. Gib jetzt möglichst erst echten Inhalt/Wert und stelle nur dann eine Frage, wenn der Reply-Plan sie zwingend verlangt.' : ''}`;
+
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: naturalReplySystemPrompt(agent, lead, firstContact, retryNote) },
+      { role: 'system', content: continuity },
       ...history,
     ];
 
@@ -922,8 +1061,8 @@ async function runNaturalReply(
       aiModel(env) as any,
       {
         messages,
-        temperature: retryNote ? 0.35 : 0.48,
-        max_tokens: 150,
+        temperature: retryNote ? 0.30 : 0.55,
+        max_tokens: 170,
       } as any,
     );
 
@@ -1052,6 +1191,13 @@ function parseSalesTurn(value: unknown): SalesTurn | null {
       known_facts: normalizeListText(row.known_facts),
       open_questions: normalizeListText(row.open_questions),
       next_step: str('next_step', ''),
+      lead_intent: str('lead_intent', 'sonstiges'),
+      reply_mode: str('reply_mode', 'qualify'),
+      reply_goal: str('reply_goal', ''),
+      must_answer: str('must_answer', 'Keine'),
+      should_ask_question: Boolean(row.should_ask_question),
+      question_goal: str('question_goal', 'Keine'),
+      should_send_checkout: Boolean(row.should_send_checkout),
       style_language: str('style_language', 'Noch erkennen'),
       style_address: str('style_address', 'Noch erkennen'),
       style_formality: str('style_formality', 'Noch erkennen'),
@@ -1104,7 +1250,7 @@ async function runWorkersAI(
       {
         role: 'system' as const,
         content:
-          'Antworte ausschließlich mit gültigem JSON ohne Markdown. Pflichtfelder: reply, stage, temperature, score, goal, pain_point, experience, budget, objection, summary, known_facts, open_questions, next_step, style_language, style_address, style_formality, style_sentence_length, style_message_length, style_emoji_usage, style_slang, style_energy, style_directness, style_humor, style_punctuation, style_notes. stage: discovery|painpoint|goal|qualification|solution|objection|close. temperature: cold|warm|hot. score: 0-100.',
+          'Antworte ausschließlich mit gültigem JSON ohne Markdown. Pflichtfelder: reply, stage, temperature, score, goal, pain_point, experience, budget, objection, summary, known_facts, open_questions, next_step, lead_intent, reply_mode, reply_goal, must_answer, should_ask_question, question_goal, should_send_checkout, style_language, style_address, style_formality, style_sentence_length, style_message_length, style_emoji_usage, style_slang, style_energy, style_directness, style_humor, style_punctuation, style_notes. stage: discovery|painpoint|goal|qualification|solution|objection|close. temperature: cold|warm|hot. score: 0-100.',
       },
     ];
 
@@ -1177,13 +1323,17 @@ async function generateSalesTurn(
 
   const replyHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   let leadMessageCount = 0;
+  let latestLead = '';
 
   for (const message of contextHistory) {
     const body = String(message.body || '').trim();
     if (!body) continue;
 
     const isLead = message.direction === 'inbound';
-    if (isLead) leadMessageCount += 1;
+    if (isLead) {
+      leadMessageCount += 1;
+      latestLead = body;
+    }
 
     const role = isLead ? 'user' as const : 'assistant' as const;
     analysisMessages.push({ role, content: body });
@@ -1194,22 +1344,62 @@ async function generateSalesTurn(
     role: 'system',
     content:
       'Analysiere jetzt den aktuellen Stand nach der allerletzten Lead-Nachricht. ' +
-      'Setze reply exakt auf ANALYSIS_ONLY. Aktualisiere Ziel, Painpoint, Stage, Score, Memory und Style Profile. ' +
-      'known_facts und open_questions müssen normale "- "-Stichpunkte sein, niemals JSON-Arrays.',
+      'Setze reply exakt auf ANALYSIS_ONLY. Aktualisiere Lead-Zustand, Memory, Style UND den verbindlichen Reply-Plan. ' +
+      'Ein kurzes "ja/ja gerne/okay" bezieht sich auf die unmittelbar vorherige AI-Nachricht. Thema nicht wechseln.',
   });
 
   const firstContact = leadMessageCount <= 1;
 
-  const [analysis, naturalReply] = await Promise.all([
-    runWorkersAI(env, analysisMessages),
-    runNaturalReply(env, agent, lead, replyHistory, firstContact),
-  ]);
+  // Erst verstehen/planen, dann schreiben. Niemals parallel.
+  const analysis = await runWorkersAI(env, analysisMessages);
+  const turn = analysis || fallbackTurnFromLead(lead, 'ANALYSIS_ONLY');
+  const analyzedLead = analyzedLeadFromTurn(turn);
 
-  if (!analysis && !naturalReply) return null;
+  let naturalReply = await runNaturalReply(
+    env,
+    agent,
+    analyzedLead,
+    replyHistory,
+    firstContact,
+  );
 
-  const turn = analysis || fallbackTurnFromLead(lead, naturalReply);
-  turn.reply = naturalReply || turn.reply;
+  let violation = naturalReplyViolation(
+    naturalReply,
+    agent,
+    latestLead,
+    firstContact,
+    analyzedLead,
+    replyHistory,
+  );
 
+  if (violation) {
+    naturalReply = await runNaturalReply(
+      env,
+      agent,
+      analyzedLead,
+      replyHistory,
+      firstContact,
+      violation,
+    );
+    violation = naturalReplyViolation(
+      naturalReply,
+      agent,
+      latestLead,
+      firstContact,
+      analyzedLead,
+      replyHistory,
+    );
+  }
+
+  const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
+  const wantsToStart = /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead);
+  if (violation && wantsToStart && checkoutUrl) {
+    naturalReply = `Klar, hier kannst du direkt starten: ${checkoutUrl}`;
+    violation = '';
+  }
+
+  if (!naturalReply) return null;
+  turn.reply = naturalReply;
   if (!turn.reply || turn.reply === 'ANALYSIS_ONLY') return null;
   return turn;
 }
@@ -1407,6 +1597,13 @@ function analyzedLeadFromTurn(turn: SalesTurn): D1Row {
     objection: turn.objection,
     summary: turn.summary,
     next_step: turn.next_step,
+    lead_intent: turn.lead_intent,
+    reply_mode: turn.reply_mode,
+    reply_goal: turn.reply_goal,
+    must_answer: turn.must_answer,
+    should_ask_question: turn.should_ask_question,
+    question_goal: turn.question_goal,
+    should_send_checkout: turn.should_send_checkout,
     memory_json: turnMemoryJson(turn),
     style_profile_json: turnStyleJson(turn),
   };
@@ -1421,10 +1618,13 @@ function naturalReplyViolation(
   agent: D1Row,
   latestLead: string,
   firstContact: boolean,
+  lead?: D1Row,
+  history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
 ) {
   const lower = reply.toLowerCase();
   const offerText = [
     agent.offer_name || agent.offerName || '',
+    agent.offer_description || agent.productKnowledge || '',
     agent.audience || '',
     agent.pain_points || agent.painPoints || '',
     agent.outcomes || '',
@@ -1433,16 +1633,64 @@ function naturalReplyViolation(
 
   const bannedPhrases = [
     'kein problem',
+    'das ist okay',
     'das ist großartig',
+    'das ist ein großes problem',
     'großartiger startpunkt',
+    'super startpunkt',
+    'normaler startpunkt',
+    'ganz normaler startpunkt',
+    'normaler einwand',
+    'ganz normaler einwand',
     'großartiger plan',
+    'viele leute wie du',
+    'speziell für menschen wie dich',
+    'umfassendes system',
     'ich bin froh',
     'vielen dank',
     'ich verstehe, dass',
     'lass uns gemeinsam',
+    'wenn du bereit bist',
+    'mit dem kauf beginnen',
   ];
   for (const phrase of bannedPhrases) {
     if (lower.includes(phrase)) return `Verwende die Floskel "${phrase}" nicht.`;
+  }
+
+  const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
+  const shortConsent = /^\s*(ja|ja gern|ja gerne|gerne|gern|okay|ok|klar|genau|mach|bitte|yes|sure)[.! ]*$/i.test(latestLead);
+  if (
+    shortConsent &&
+    previousAI &&
+    /\b(möchtest du|willst du|soll ich|möchten sie|wollen sie|soll ich ihnen)\b/i.test(reply)
+  ) {
+    return 'Der Lead hat gerade zugestimmt. Liefere jetzt die zuvor angebotene Information, statt erneut um Erlaubnis zu fragen.';
+  }
+
+  if (
+    lead?.should_ask_question === false &&
+    /\?\s*$/.test(reply.trim())
+  ) {
+    return 'Der Reply-Plan sagt ausdrücklich: keine neue Frage. Antworte ohne Fragezeichen am Ende.';
+  }
+
+  const offerName = String(agent.offer_name || agent.offerName || '').trim();
+  const directProductQuestion = /\b(was ist|wie funktioniert|wie verdien|was enthält|enthalten|welche wege|gibt es|preis|kostet|kosten|rate|raten|klarna|produkt|angebot)\b/i.test(latestLead);
+  const earlyStage = ['discovery','painpoint','goal'].includes(String(lead?.stage || lead?.current_stage || ''));
+  if (
+    !firstContact &&
+    earlyStage &&
+    !directProductQuestion &&
+    offerName &&
+    reply.toLowerCase().includes(offerName.toLowerCase())
+  ) {
+    return 'Zu früher Pitch: Der Lead hat gerade nur seine Situation/Painpoint beschrieben. Reagiere darauf, ohne den Angebotsnamen ungefragt zu platzieren.';
+  }
+
+  const wantsToStart = /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead);
+  const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
+  if (wantsToStart && checkoutUrl && !reply.includes(checkoutUrl)) {
+    return `Der Lead will klar starten/kaufen. Sende jetzt direkt den hinterlegten Checkout-Link: ${checkoutUrl}. Kein weiterer Pitch und keine Qualifizierungsfrage.`;
   }
 
   const categoryWords = ['tool','software','app','plattform','coaching','kurs'];
@@ -1574,7 +1822,7 @@ async function generateDemoDraft(
     firstContact,
   );
 
-  let violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact);
+  let violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact, analyzedLead, replyHistory);
   if (violation) {
     naturalReply = await runNaturalReply(
       env,
@@ -1584,10 +1832,19 @@ async function generateDemoDraft(
       firstContact,
       violation,
     );
-    violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact);
+    violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact, analyzedLead, replyHistory);
   }
 
   if (!naturalReply) return null;
+
+  // Bei klarer Startabsicht niemals weiterqualifizieren: direkt zum hinterlegten Checkout.
+  if (violation && /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead)) {
+    const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
+    if (checkoutUrl) {
+      naturalReply = `Klar, hier kannst du direkt starten: ${checkoutUrl}`;
+      violation = '';
+    }
+  }
 
   // Letzter defensiver Fallback bei einer direkten Preisfrage:
   // Lieber eine kurze, korrekte Antwort als erfundene oder ausweichende Preisinformation.
