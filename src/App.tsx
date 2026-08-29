@@ -36,10 +36,10 @@ type Bootstrap = {
   agent: Record<string, any>;
 };
 
-type View = 'dashboard' | 'inbox' | 'leads' | 'automations' | 'agent' | 'analytics' | 'integrations' | 'billing' | 'settings';
+type View = 'dashboard' | 'inbox' | 'test' | 'leads' | 'automations' | 'agent' | 'analytics' | 'integrations' | 'billing' | 'settings';
 
 const nav = [
-  ['dashboard', 'Dashboard', LayoutDashboard], ['inbox', 'Inbox', MessageCircle], ['leads', 'Leads', Users],
+  ['dashboard', 'Dashboard', LayoutDashboard], ['inbox', 'Inbox', MessageCircle], ['test', 'Test-Chat', Bot], ['leads', 'Leads', Users],
   ['automations', 'Automationen', Workflow], ['agent', 'AI Agent', BrainCircuit], ['analytics', 'Analytics', BarChart3],
   ['integrations', 'Integrationen', PlugZap], ['billing', 'Billing', CreditCard], ['settings', 'Einstellungen', Settings],
 ] as const;
@@ -84,6 +84,7 @@ function ProductApp() {
       <div className={view === 'inbox' ? 'content content-inbox' : 'content'}>
         {view === 'dashboard' && <Dashboard data={data} onOpenInbox={()=>setView('inbox')} onConnect={()=>setView('integrations')}/>} 
         {view === 'inbox' && <Inbox conversations={data.conversations} selected={selected} setSelected={setSelectedId} updateConversation={(conv)=>setData({...data, conversations:data.conversations.map(c=>c.id===conv.id?conv:c)})}/>} 
+        {view === 'test' && <TestChat agent={data.agent}/>} 
         {view === 'leads' && <Leads conversations={data.conversations} onOpen={(id)=>{setSelectedId(id);setView('inbox')}}/>}
         {view === 'automations' && <Automations/>}
         {view === 'agent' && <Agent initial={data.agent}/>} 
@@ -241,6 +242,242 @@ function Inbox({conversations,selected,setSelected,updateConversation}:{conversa
   </div>
 }
 function stageRank(s:string){return ['discovery','painpoint','goal','qualification','solution','objection','close'].indexOf(s)}
+
+
+function TestChat({agent}:{agent:Record<string,any>}){
+  const [messages,setMessages]=useState<Message[]>([]);
+  const [input,setInput]=useState('');
+  const [thinking,setThinking]=useState(false);
+  const [error,setError]=useState('');
+  const messagesRef=useRef<HTMLDivElement|null>(null);
+  const [leadState,setLeadState]=useState<{
+    stage:string;temperature:string;score:number;goal:string;painPoint:string;experience:string;budget:string;objection:string;
+    summary:string;knownFacts:string;openQuestions:string;nextStep:string;styleProfile:StyleProfile;
+  }>({
+    stage:'discovery',temperature:'cold',score:0,goal:'Unklar',painPoint:'Unklar',experience:'Unklar',budget:'Unklar',objection:'Unklar',
+    summary:'',knownFacts:'',openQuestions:'',nextStep:'Situation natürlich verstehen',styleProfile:{}
+  });
+
+  useEffect(()=>{
+    const el=messagesRef.current;
+    if(!el)return;
+    requestAnimationFrame(()=>{el.scrollTop=el.scrollHeight});
+  },[messages.length,thinking]);
+
+  function resetTest(){
+    setMessages([]);
+    setInput('');
+    setThinking(false);
+    setError('');
+    setLeadState({
+      stage:'discovery',temperature:'cold',score:0,goal:'Unklar',painPoint:'Unklar',experience:'Unklar',budget:'Unklar',objection:'Unklar',
+      summary:'',knownFacts:'',openQuestions:'',nextStep:'Situation natürlich verstehen',styleProfile:{}
+    });
+  }
+
+  async function sendLead(){
+    const body=input.trim();
+    if(!body||thinking)return;
+
+    const leadMessage:Message={id:crypto.randomUUID(),from:'lead',body,time:'jetzt'};
+    const nextMessages=[...messages,leadMessage];
+
+    setInput('');
+    setError('');
+    setMessages(nextMessages);
+    setThinking(true);
+
+    const startedAt=Date.now();
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),30000);
+
+    try{
+      const response=await fetch('/api/ai/test',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        signal:controller.signal,
+        body:JSON.stringify({
+          message:body,
+          stage:leadState.stage,
+          painPoint:leadState.painPoint,
+          objection:leadState.objection,
+          leadMemory:{
+            goal:leadState.goal,
+            painPoint:leadState.painPoint,
+            experience:leadState.experience,
+            budget:leadState.budget,
+            objection:leadState.objection,
+            summary:leadState.summary,
+            knownFacts:leadState.knownFacts,
+            openQuestions:leadState.openQuestions,
+            nextStep:leadState.nextStep,
+          },
+          styleProfile:leadState.styleProfile,
+          history:nextMessages.slice(-10).map(message=>({
+            from:message.from,
+            body:message.body,
+            time:message.time,
+          })),
+        }),
+      });
+
+      const j:any=await response.json();
+
+      if(!response.ok){
+        setError(j.error||'Die KI konnte gerade nicht antworten.');
+        return;
+      }
+
+      const styleProfile:StyleProfile={
+        language:j.style_language,
+        address:j.style_address,
+        formality:j.style_formality,
+        sentenceLength:j.style_sentence_length,
+        messageLength:j.style_message_length,
+        emojiUsage:j.style_emoji_usage,
+        slang:j.style_slang,
+        energy:j.style_energy,
+        directness:j.style_directness,
+        humor:j.style_humor,
+        punctuation:j.style_punctuation,
+        notes:j.style_notes,
+      };
+
+      setLeadState({
+        stage:j.stage||leadState.stage,
+        temperature:j.temperature||leadState.temperature,
+        score:typeof j.score==='number'?j.score:leadState.score,
+        goal:j.goal||leadState.goal,
+        painPoint:j.pain_point||leadState.painPoint,
+        experience:j.experience||leadState.experience,
+        budget:j.budget||leadState.budget,
+        objection:j.objection||leadState.objection,
+        summary:j.summary||leadState.summary,
+        knownFacts:j.known_facts||leadState.knownFacts,
+        openQuestions:j.open_questions||leadState.openQuestions,
+        nextStep:j.next_step||leadState.nextStep,
+        styleProfile,
+      });
+
+      const reply=String(j.reply||'').trim();
+      if(!reply){
+        setError('Die KI hat keine Antwort zurückgegeben.');
+        return;
+      }
+
+      const targetDelay=clientHumanReplyDelayMs(reply,styleProfile);
+      const remaining=Math.max(0,targetDelay-(Date.now()-startedAt));
+      if(remaining>0)await waitMs(remaining);
+
+      setMessages(current=>[
+        ...current,
+        {id:crypto.randomUUID(),from:'ai',body:reply,time:'jetzt'}
+      ]);
+    }catch(err:any){
+      setError(err?.name==='AbortError'?'Die KI braucht gerade zu lange. Bitte nochmal versuchen.':'Verbindung zur KI fehlgeschlagen.');
+    }finally{
+      clearTimeout(timeout);
+      setThinking(false);
+    }
+  }
+
+  const styleLine=[
+    leadState.styleProfile.language,
+    leadState.styleProfile.address,
+    leadState.styleProfile.formality,
+    leadState.styleProfile.messageLength,
+    leadState.styleProfile.emojiUsage
+  ].filter(Boolean).join(' · ');
+
+  return <>
+    <PageHead
+      eyebrow="TEST LAB"
+      title="Sales-Agent live testen"
+      desc="Du spielst den Lead. Die KI übernimmt automatisch die Verkäuferrolle und aktualisiert Memory, Sprachstil, Stage und Kaufsignal bei jeder Nachricht."
+      action={<button className="secondary" onClick={resetTest}><X size={16}/> Test zurücksetzen</button>}
+    />
+
+    <div className="test-chat-layout">
+      <section className="panel test-chat-panel">
+        <div className="test-chat-head">
+          <div className="agent-orb"><Bot size={18}/></div>
+          <div>
+            <b>Live Test-Conversation</b>
+            <span>Du = Lead · AI = Verkäufer</span>
+          </div>
+          <div className="test-offer"><span>Aktives Angebot</span><b>{agent.offerName||'Dein Hauptangebot'}</b></div>
+        </div>
+
+        <div className="test-messages messages" ref={messagesRef}>
+          {messages.length===0&&<div className="test-empty">
+            <div className="test-empty-icon"><MessageCircle size={22}/></div>
+            <b>Starte wie ein echter Interessent.</b>
+            <p>Zum Beispiel: „Hey, ich hab dein Reel gesehen. Wie funktioniert das?“</p>
+          </div>}
+
+          {messages.map(message=>
+            <div key={message.id} className={`message-row ${message.from}`}>
+              <div className="bubble">
+                <span className="speaker">{message.from==='lead'?'Du als Lead':'AI Verkäufer'}</span>
+                {message.body}
+                <time>{message.time}</time>
+              </div>
+            </div>
+          )}
+
+          {thinking&&<div className="message-row ai typing-row">
+            <div className="bubble typing-bubble">
+              <span className="speaker">AI Verkäufer</span>
+              <div className="typing-line"><span>Schreibt</span><span className="typing-dots"><i/><i/><i/></span></div>
+            </div>
+          </div>}
+        </div>
+
+        <div className="test-composer">
+          {error&&<div className="test-error">{error}</div>}
+          <div className="test-compose-row">
+            <textarea
+              value={input}
+              disabled={thinking}
+              onChange={e=>setInput(e.target.value)}
+              placeholder="Schreib hier als Lead…"
+              onKeyDown={e=>{
+                if(e.key==='Enter'&&!e.shiftKey){
+                  e.preventDefault();
+                  sendLead();
+                }
+              }}
+            />
+            <button className="primary" onClick={sendLead} disabled={thinking||!input.trim()}>
+              <Send size={17}/>
+              <span>{thinking?'AI antwortet…':'Als Lead senden'}</span>
+            </button>
+          </div>
+          <small>Die KI nutzt Lead Memory + Style Profile + die letzten 10 Nachrichten und wartet realistisch, bevor sie antwortet.</small>
+        </div>
+      </section>
+
+      <aside className="panel test-intelligence">
+        <div className="test-intel-head">
+          <span className="eyebrow">LIVE LEAD INTELLIGENCE</span>
+          <div className={`test-temp ${leadState.temperature}`}>{leadState.temperature==='hot'?'🔥 HOT':leadState.temperature==='warm'?'WARM':'COLD'}</div>
+          <div className="test-score"><strong>{leadState.score}%</strong><span>Kaufsignal</span></div>
+        </div>
+
+        <div className="test-intel-row"><label>Stage</label><span className="stage-pill"><Zap size={13}/>{stageLabel[leadState.stage]||leadState.stage}</span></div>
+        <div className="test-intel-row"><label>Ziel</label><p>{leadState.goal}</p></div>
+        <div className="test-intel-row"><label>Painpoint</label><p>{leadState.painPoint}</p></div>
+        <div className="test-intel-row"><label>Erfahrung</label><p>{leadState.experience}</p></div>
+        <div className="test-intel-row"><label>Budget</label><p>{leadState.budget}</p></div>
+        <div className="test-intel-row"><label>Einwand</label><p>{leadState.objection}</p></div>
+        <div className="test-intel-row"><label>Sprachstil</label><p>{styleLine||'Wird aus deinen Nachrichten erkannt'}</p></div>
+        <div className="test-intel-row"><label>Memory</label><p className="preline">{leadState.knownFacts||'Noch keine belastbaren Fakten gespeichert.'}</p></div>
+        <div className="test-intel-row"><label>Noch offen</label><p className="preline">{leadState.openQuestions||'Noch keine offenen Punkte erkannt.'}</p></div>
+        <div className="test-next-step"><Sparkles size={16}/><div><b>Nächster sinnvoller Schritt</b><p>{leadState.nextStep}</p></div></div>
+      </aside>
+    </div>
+  </>
+}
 
 function Leads({conversations,onOpen}:{conversations:Conversation[],onOpen:(id:string)=>void}){
  return <><PageHead eyebrow="CRM" title="Leads" desc="Jeder Kontakt wird automatisch qualifiziert, zusammengefasst und nach Kaufsignal priorisiert." action={<button className="secondary"><ListFilter size={17}/> Filter</button>}/><div className="panel table-panel"><table><thead><tr><th>Lead</th><th>Stage</th><th>Painpoint</th><th>Score</th><th>AI</th><th/></tr></thead><tbody>{conversations.map(c=><tr key={c.id}><td><div className="person"><div className="avatar">{c.avatar}</div><div><b>{c.name}</b><span>{c.username}</span></div></div></td><td><span className="stage-pill">{stageLabel[c.stage]}</span></td><td>{c.painPoint}</td><td><div className="score-cell"><div className="mini-score"><i style={{width:`${c.score}%`}}/></div><b>{c.score}%</b></div></td><td><span className={`ai-state ${c.aiMode}`}>{c.aiMode==='active'?'Aktiv':'Pausiert'}</span></td><td><button className="text-btn" onClick={()=>onOpen(c.id)}>Öffnen →</button></td></tr>)}</tbody></table></div></>
