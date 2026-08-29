@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, Bot, BrainCircuit, Check, ChevronRight, CircleDollarSign, Clock3, Instagram,
+  Activity, Bot, BrainCircuit, Check, ChevronRight, CircleDollarSign, Clock3, Camera as Instagram,
   LayoutDashboard, ListFilter, MessageCircle, Pause, Play, PlugZap, Search, Send, Settings,
   Sparkles, Target, Users, Workflow, Zap, ShieldCheck, BarChart3, CreditCard, Menu, X
 } from 'lucide-react';
