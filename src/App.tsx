@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, Bot, BrainCircuit, Check, ChevronRight, CircleDollarSign, Clock3, Camera as Instagram,
   LayoutDashboard, ListFilter, MessageCircle, Pause, Play, PlugZap, Search, Send, Settings,
@@ -125,17 +125,37 @@ function Dashboard({data,onOpenInbox,onConnect}:{data:Bootstrap,onOpenInbox:()=>
   </>
 }
 
+function waitMs(ms:number){return new Promise<void>(resolve=>setTimeout(resolve,ms))}
+function clientHumanReplyDelayMs(text:string,style?:StyleProfile){
+  const chars=Math.max(1,text.trim().length);
+  let factor=1;
+  const formality=(style?.formality||'').toLowerCase();
+  const messageLength=(style?.messageLength||'').toLowerCase();
+  const energy=(style?.energy||'').toLowerCase();
+  if(messageLength.includes('kurz')) factor*=0.9;
+  if(messageLength.includes('lang')||messageLength.includes('ausführ')) factor*=1.08;
+  if(formality.includes('locker')) factor*=0.94;
+  if(formality.includes('formell')||formality.includes('förmlich')) factor*=1.07;
+  if(energy.includes('hoch')||energy.includes('schnell')||energy.includes('energet')) factor*=0.92;
+  const base=1800+(chars*62);
+  const jitter=0.9+(Math.random()*0.2);
+  return Math.max(4200,Math.min(14000,Math.round(base*factor*jitter)));
+}
+
 function Inbox({conversations,selected,setSelected,updateConversation}:{conversations:Conversation[],selected:Conversation,setSelected:(id:string)=>void,updateConversation:(c:Conversation)=>void}){
   const [input,setInput]=useState('');
   const [drafting,setDrafting]=useState(false);
+  const messagesRef=useRef<HTMLDivElement|null>(null);
   const messages = selected.messages.length ? selected.messages : [{id:'empty',from:'ai' as const,body:'Demo-Konversation: Nachrichtenverlauf wird hier angezeigt.',time:''}];
+  useEffect(()=>{const el=messagesRef.current;if(!el)return;requestAnimationFrame(()=>{el.scrollTop=el.scrollHeight})},[selected.id,drafting]);
   async function toggleAI(){const mode=selected.aiMode==='active'?'paused':'active'; await fetch(`/api/conversations/${selected.id}/ai-mode`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}); updateConversation({...selected,aiMode:mode});}
   async function send(){if(!input.trim())return; const body=input.trim(); setInput(''); const r=await fetch(`/api/conversations/${selected.id}/reply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:body})}); const j:any=await r.json(); if(!r.ok){setInput(body);return;} updateConversation({...selected,aiMode:'paused',messages:[...selected.messages,{id:j.id||crypto.randomUUID(),from:'human',body,time:'jetzt'}],lastMessage:body});}
   async function draft() {
+    const startedAt=Date.now();
     setDrafting(true);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const r = await fetch('/api/agent/draft', {
@@ -173,7 +193,12 @@ function Inbox({conversations,selected,setSelected,updateConversation}:{conversa
         return;
       }
 
-      setInput(j.draft || 'Keine Antwort erhalten.');
+      const draftText=j.draft || 'Keine Antwort erhalten.';
+      const targetDelay=clientHumanReplyDelayMs(draftText,j.analysis?.styleProfile || selected.styleProfile);
+      const remaining=Math.max(0,targetDelay-(Date.now()-startedAt));
+      if(remaining>0) await waitMs(remaining);
+
+      setInput(draftText);
 
       if (j.analysis) {
         updateConversation({
@@ -208,8 +233,8 @@ function Inbox({conversations,selected,setSelected,updateConversation}:{conversa
     <section className="conversation-list"><div className="inbox-title"><div><span className="eyebrow">INBOX</span><h2>Konversationen</h2></div><button className="filter"><ListFilter size={17}/></button></div><div className="search"><Search size={16}/><input placeholder="Name oder @username suchen"/></div><div className="tabs"><button className="active">Offen <span>3</span></button><button>Hot</button><button>Übernommen</button></div><div className="conv-items">{conversations.map(c=><button className={selected.id===c.id?'selected':''} key={c.id} onClick={()=>setSelected(c.id)}><div className="avatar">{c.avatar}<i className={c.aiMode==='active'?'online':'paused'}/></div><div className="conv-copy"><div><b>{c.name}</b><time>{c.time}</time></div><span>{c.lastMessage}</span><div className="conv-meta"><em className={`temp ${c.temperature}`}>{c.temperature==='hot'?'🔥 HOT':c.temperature==='warm'?'WARM':'COLD'}</em><em>{stageLabel[c.stage]}</em></div></div></button>)}</div></section>
     <section className="chat"><div className="chat-head"><div className="avatar">{selected.avatar}</div><div><b>{selected.name}</b><span>{selected.username} · <i className={selected.aiMode==='active'?'green-dot':''}/> AI {selected.aiMode==='active'?'aktiv':'pausiert'}</span></div><div className="chat-actions"><button className={selected.aiMode==='active'?'pause':'play'} onClick={toggleAI}>{selected.aiMode==='active'?<Pause size={15}/>:<Play size={15}/>} {selected.aiMode==='active'?'AI pausieren':'AI übernehmen lassen'}</button></div></div>
       <div className="stage-line"><span>Sales Stage</span><div>{['discovery','painpoint','goal','qualification','solution','objection','close'].map(s=><i key={s} className={s===selected.stage?'current':stageRank(s)<stageRank(selected.stage)?'done':''}>{s===selected.stage?<Zap size={11}/>:null}{stageLabel[s]}</i>)}</div></div>
-      <div className="messages">{messages.map(m=><div key={m.id} className={`message-row ${m.from}`}><div className="bubble"><span className="speaker">{m.from==='lead'?selected.name:m.from==='ai'?'AI Agent':'Du'}</span>{m.body}<time>{m.time}</time></div></div>)}</div>
-      <div className="composer"><button className="ai-draft" onClick={draft} disabled={drafting}><Sparkles size={16}/>{drafting?'KI denkt…':'AI Vorschlag'}</button><div className="compose-row"><textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Nachricht schreiben…" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}/><button onClick={send}><Send size={18}/></button></div><small>Wenn du selbst antwortest, empfehlen wir den AI Agent für diese Unterhaltung zu pausieren.</small></div>
+      <div className="messages" ref={messagesRef}>{messages.map(m=><div key={m.id} className={`message-row ${m.from}`}><div className="bubble"><span className="speaker">{m.from==='lead'?selected.name:m.from==='ai'?'AI Agent':'Du'}</span>{m.body}<time>{m.time}</time></div></div>)}{drafting&&<div className="message-row ai typing-row"><div className="bubble typing-bubble"><span className="speaker">AI Agent</span><div className="typing-line"><span>Schreibt</span><span className="typing-dots"><i/><i/><i/></span></div></div></div>}</div>
+      <div className="composer"><button className="ai-draft" onClick={draft} disabled={drafting}><Sparkles size={16}/>{drafting?'Antwort wird vorbereitet…':'AI Vorschlag'}</button><div className="compose-row"><textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Nachricht schreiben…" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}/><button onClick={send}><Send size={18}/></button></div><small>Wenn du selbst antwortest, empfehlen wir den AI Agent für diese Unterhaltung zu pausieren.</small></div>
     </section>
     <aside className="lead-card"><div className="lead-head"><span className="eyebrow">LEAD INTELLIGENCE</span><div className="score-ring"><strong>{selected.score}%</strong><span>Kaufsignal</span></div><h3>{selected.name}</h3><p>{selected.username}</p></div><div className="lead-section"><label>Aktueller Stage</label><span className="stage-pill"><Zap size={13}/>{stageLabel[selected.stage]}</span></div>{[['Ziel',selected.goal,Target],['Painpoint',selected.painPoint,BrainCircuit],['Erfahrung',selected.experience,Activity],['Budget',selected.budget,CircleDollarSign],['Einwand',selected.objection,ShieldCheck]].map(([l,v,I]:any)=><div className="intel" key={l}><I size={16}/><div><label>{l}</label><p>{v}</p></div></div>)}<div className="intel"><MessageCircle size={16}/><div><label>Sprachstil</label><p>{[selected.styleProfile?.language, selected.styleProfile?.address, selected.styleProfile?.formality, selected.styleProfile?.emojiUsage].filter(Boolean).join(' · ') || 'Wird aus den Lead-Nachrichten erkannt'}</p></div></div><div className="lead-note"><Sparkles size={15}/><p><b>Nächster sinnvoller Schritt:</b> {selected.nextStep || 'Weiter natürlich qualifizieren und nichts erneut fragen, was bereits geklärt wurde.'}</p></div></aside>
   </div>
