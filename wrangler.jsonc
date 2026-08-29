@@ -11,7 +11,12 @@
 
   "vars": {
     "DEMO_MODE": "true",
-    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast"
+    "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
+    "HUMAN_REPLY_MIN_MS": "4200",
+    "HUMAN_REPLY_MAX_MS": "14000",
+    "HUMAN_BURST_WAIT_MIN_MS": "1400",
+    "HUMAN_BURST_WAIT_MAX_MS": "2400",
+    "INSTAGRAM_TYPING_ACTIONS": "true"
   },
 
   "ai": {
