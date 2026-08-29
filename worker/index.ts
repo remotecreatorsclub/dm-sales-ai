@@ -715,15 +715,16 @@ WICHTIG:
 Wenn der Lead z. B. sagt "Ich möchte mir neben meinem Job online was aufbauen, weiß aber nicht womit ich anfangen soll", dann sind mindestens Ziel und Painpoint nicht mehr "Unklar".`;
 }
 
-function naturalReplySystemPrompt(agent: D1Row, lead: D1Row, firstContact: boolean) {
+function naturalReplySystemPrompt(agent: D1Row, lead: D1Row, firstContact: boolean, retryNote = '') {
   const context = leadContextPrompt(lead);
+  const currentStage = safeStage(lead.stage || lead.current_stage);
 
   return `Du schreibst NUR die nächste sichtbare Instagram-DM eines menschlich wirkenden Verkäufers.
 Kein JSON. Keine Analyse. Keine Labels. Nur die Nachricht, die der Lead sehen soll.
 
-ANGEBOT
+ANGEBOT — DAS SIND DIE EINZIG ERLAUBTEN PRODUKTFAKTEN
 Name: ${agent.offer_name || agent.offerName || ''}
-Preis: ${agent.price_text || agent.price || ''}
+Preis/Zahlungsoptionen: ${agent.price_text || agent.price || ''}
 Zielgruppe: ${agent.audience || ''}
 Painpoints: ${agent.pain_points || agent.painPoints || ''}
 Gewünschte Ergebnisse: ${agent.outcomes || ''}
@@ -732,7 +733,15 @@ Checkout: ${agent.checkout_url || agent.checkoutUrl || ''}
 Termin: ${agent.booking_url || agent.bookingUrl || ''}
 Grundton: ${agent.tone || 'Natürlich, direkt, freundlich und kurz.'}
 
+WICHTIGE GROUNDING-REGEL:
+- Erfinde KEINE Produktkategorie, Funktion oder Leistung, die oben nicht steht.
+- Nenne das Angebot NICHT "Tool", "Software", "App", "Plattform", "Coaching", "Kurs" oder ähnliches, wenn genau dieses Wort nicht in den Produktfakten vorkommt.
+- Erfinde keine Funktionen wie "Plattform erstellen", "Kunden automatisch ansprechen", "Ads schalten" oder Ähnliches.
+- Wenn Informationen fehlen, bleib allgemein und wahr: erkläre nur, was aus Zielgruppe + Ergebnissen eindeutig hervorgeht.
+
 ${context}
+
+AKTUELLE INTERNE STAGE: ${currentStage}
 
 HARTE REGELN FÜR DIE SICHTBARE DM
 1. Antworte IMMER auf die allerletzte Lead-Nachricht, nicht auf eine ältere Nachricht.
@@ -741,28 +750,40 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 4. Wenn der Lead eine direkte Frage stellt, beantworte sie zuerst.
 5. Maximal 1-2 kurze Sätze und höchstens eine Frage.
 6. Keine Landingpage-Sprache, kein Monolog, kein künstlicher Pitch.
-7. Kein "Vielen Dank", "Ich bin froh, dass...", "Ich verstehe, dass..." oder andere generische Bot-Floskeln.
+7. Verbotene Floskeln: "Kein Problem", "Das ist großartig", "großartiger Startpunkt", "Ich bin froh", "Ich verstehe, dass", "Vielen Dank", "Lass uns gemeinsam".
 8. Sprich direkt mit dem Lead.
 9. "du/dein/dir/dich" im Lead => konsequent duzen. "Sie/Ihnen/Ihr" => konsequent siezen.
 10. Keine bereits geklärte Frage erneut stellen.
 11. Emojis nur, wenn sie zum Stil des Leads passen.
 12. Rechtschreibfehler nicht künstlich kopieren.
 13. Keine erfundenen Fakten, Garantien, falsche Knappheit oder Druck.
+14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
+15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
 
 ${firstContact ? `ERSTKONTAKT:
 - Nicht pitchen.
 - Bei "Was ist das?", "Wie funktioniert das?" oder "Worum geht's?" zuerst in EINEM einfachen Satz erklären, was das Angebot im Kern macht.
+- Nutze dabei den echten Angebotsnamen, wenn das natürlich passt.
 - Danach höchstens eine natürliche Discovery-Frage.
-- Preis/Checkout nicht ungefragt nennen.` : `LAUFENDES GESPRÄCH:
+- Preis/Checkout nicht ungefragt nennen.
+- Beispiel-Struktur: "${agent.offer_name || agent.offerName || 'Das Angebot'} hilft dir Schritt für Schritt dabei, [nur belegtes Ergebnis]. Bist du da noch ganz am Anfang?"
+- Keine erfundene Bezeichnung wie "Tool" oder "Plattform".` : `LAUFENDES GESPRÄCH:
 - Nutze den bisherigen Verlauf.
-- Wenn der Lead gerade Ziel, Problem oder Einwand genannt hat, reagiere genau darauf.
-- Bewege das Gespräch nur einen sinnvollen Schritt weiter.`}
+- Wenn der Lead gerade Ziel oder Problem genannt hat, reagiere genau darauf und qualifiziere weiter.
+- Bei Stage discovery/painpoint/goal: NICHT ungefragt pitchen.
+- Bei qualification darfst du den Fit vorsichtig herstellen.
+- Bei solution darfst du das Angebot konkret erklären.
+- Bei objection klärst du genau den Einwand.
+- Bei close darfst du einen klaren CTA setzen.`}
 
 GUTE TONALITÄT:
-Locker, konkret und wie eine echte DM. Lieber:
-"Okay, dann ist dein Ziel eigentlich schon ziemlich klar. Was fehlt dir gerade am meisten, um loszulegen?"
-statt:
-"Ich bin froh, dass du mein Reel gesehen hast!"
+Locker, konkret und wie eine echte DM.
+Gut: "Okay, dann ist dein Ziel schon ziemlich klar. Was hast du bisher schon ausprobiert?"
+Schlecht: "Das ist ein großartiger Plan! Ich habe ein Paket, das dir helfen könnte."
+
+${retryNote ? `WICHTIGER RETRY-HINWEIS:
+${retryNote}
+Formuliere die Antwort komplett neu und korrigiere diesen Fehler.` : ''}
 
 Antworte jetzt ausschließlich mit der nächsten sichtbaren DM.`;
 }
@@ -871,12 +892,13 @@ async function runNaturalReply(
   lead: D1Row,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
   firstContact: boolean,
+  retryNote = '',
 ) {
   if (!env.AI) return '';
 
   try {
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: naturalReplySystemPrompt(agent, lead, firstContact) },
+      { role: 'system', content: naturalReplySystemPrompt(agent, lead, firstContact, retryNote) },
       ...history,
     ];
 
@@ -884,8 +906,8 @@ async function runNaturalReply(
       aiModel(env) as any,
       {
         messages,
-        temperature: 0.55,
-        max_tokens: 180,
+        temperature: retryNote ? 0.35 : 0.48,
+        max_tokens: 150,
       } as any,
     );
 
@@ -1195,6 +1217,254 @@ async function activeDemoAgent(env: Env): Promise<D1Row> {
   return (demoBootstrap.agent || {}) as D1Row;
 }
 
+
+function isUnknownValue(value: unknown) {
+  const v = String(value ?? '').trim().toLowerCase();
+  return !v || ['unklar','unbekannt','noch erkennen','noch unbekannt','n/a','-'].includes(v);
+}
+
+function lastLeadText(history: DemoHistoryMessage[]) {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i]?.from === 'lead') return String(history[i].body || '').trim();
+  }
+  return '';
+}
+
+function inferStyleFromDemoHistory(history: DemoHistoryMessage[]) {
+  const leadTexts = history
+    .filter((message) => message.from === 'lead')
+    .map((message) => String(message.body || '').trim())
+    .filter(Boolean);
+
+  const joined = leadTexts.join(' ');
+  const lower = joined.toLowerCase();
+  const avgLen = leadTexts.length
+    ? leadTexts.reduce((sum, item) => sum + item.length, 0) / leadTexts.length
+    : 0;
+
+  const usesSie = /\b(sie|ihnen|ihr|ihre|ihren)\b/.test(lower);
+  const usesDu = /\b(du|dir|dich|dein|deine|deinen|deinem)\b/.test(lower) ||
+    /\bhey\b/.test(lower);
+  const hasEmoji = /[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u.test(joined);
+  const locker = /\b(hey|ehrlich|null|halt|bisschen|irgendwie|mega|puh|gar nicht|komplett)\b/.test(lower);
+
+  return {
+    language: /[äöüß]|\b(ich|und|aber|was|wie|nicht|mein|meine|mir)\b/.test(lower) ? 'deutsch' : 'Unbekannt',
+    address: usesSie && !usesDu ? 'Sie' : usesDu ? 'du' : 'Unbekannt',
+    formality: locker || usesDu ? 'locker' : usesSie ? 'formell' : 'Unbekannt',
+    sentenceLength: avgLen && avgLen < 90 ? 'kurz' : avgLen ? 'mittel' : 'Unbekannt',
+    messageLength: avgLen && avgLen < 100 ? 'kurz' : avgLen ? 'mittel' : 'Unbekannt',
+    emojiUsage: hasEmoji ? 'gelegentlich' : 'keine',
+    slang: locker ? 'leicht' : 'kaum',
+    energy: 'ruhig',
+    directness: 'direkt',
+    humor: 'neutral',
+    punctuation: 'normal',
+    notes: 'Natürlich und knapp antworten.',
+  };
+}
+
+function mergeUniqueLines(...values: unknown[]) {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeListText(value);
+    for (const raw of normalized.split('\n')) {
+      const item = raw.replace(/^-+\s*/, '').trim();
+      if (!item) continue;
+      const key = item.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`- ${item}`);
+    }
+  }
+
+  return lines.slice(0, 8).join('\n');
+}
+
+function stabilizeDemoAnalysis(
+  turn: SalesTurn,
+  previousLead: D1Row,
+  history: DemoHistoryMessage[],
+) {
+  const priorMemory = parseJsonObject(previousLead.memory_json || previousLead.memoryJson);
+  const inferredStyle = inferStyleFromDemoHistory(history);
+
+  if (isUnknownValue(turn.goal) && !isUnknownValue(priorMemory.goal)) {
+    turn.goal = String(priorMemory.goal);
+  }
+  if (isUnknownValue(turn.pain_point) && !isUnknownValue(priorMemory.painPoint || priorMemory.pain_point)) {
+    turn.pain_point = String(priorMemory.painPoint || priorMemory.pain_point);
+  }
+  if (isUnknownValue(turn.experience) && !isUnknownValue(priorMemory.experience)) {
+    turn.experience = String(priorMemory.experience);
+  }
+  if (isUnknownValue(turn.budget) && !isUnknownValue(priorMemory.budget)) {
+    turn.budget = String(priorMemory.budget);
+  }
+  if (isUnknownValue(turn.objection) && !isUnknownValue(priorMemory.objection)) {
+    turn.objection = String(priorMemory.objection);
+  }
+
+  const factLines: string[] = [];
+  if (!isUnknownValue(turn.goal)) factLines.push(`- Ziel: ${turn.goal}`);
+  if (!isUnknownValue(turn.pain_point)) factLines.push(`- Painpoint: ${turn.pain_point}`);
+  if (!isUnknownValue(turn.experience)) factLines.push(`- Erfahrung: ${turn.experience}`);
+  if (!isUnknownValue(turn.budget)) factLines.push(`- Budget: ${turn.budget}`);
+  if (!isUnknownValue(turn.objection)) factLines.push(`- Einwand: ${turn.objection}`);
+
+  turn.known_facts = mergeUniqueLines(
+    priorMemory.knownFacts || priorMemory.known_facts,
+    turn.known_facts,
+    factLines.join('\n'),
+  );
+
+  const open: string[] = [];
+  if (isUnknownValue(turn.goal)) open.push('- Konkretes Ziel verstehen');
+  if (isUnknownValue(turn.pain_point)) open.push('- Größtes Hindernis verstehen');
+  if (!isUnknownValue(turn.goal) && !isUnknownValue(turn.pain_point) && isUnknownValue(turn.experience)) {
+    open.push('- Bisherige Erfahrung verstehen');
+  }
+  if (!isUnknownValue(turn.goal) && !isUnknownValue(turn.pain_point) && !isUnknownValue(turn.experience) && isUnknownValue(turn.objection)) {
+    open.push('- Prüfen, ob noch ein echter Einwand offen ist');
+  }
+  turn.open_questions = open.slice(0, 4).join('\n');
+
+  if (isUnknownValue(turn.style_language)) turn.style_language = inferredStyle.language;
+  if (isUnknownValue(turn.style_address)) turn.style_address = inferredStyle.address;
+  if (isUnknownValue(turn.style_formality)) turn.style_formality = inferredStyle.formality;
+  if (isUnknownValue(turn.style_sentence_length)) turn.style_sentence_length = inferredStyle.sentenceLength;
+  if (isUnknownValue(turn.style_message_length)) turn.style_message_length = inferredStyle.messageLength;
+  if (isUnknownValue(turn.style_emoji_usage)) turn.style_emoji_usage = inferredStyle.emojiUsage;
+  if (isUnknownValue(turn.style_slang)) turn.style_slang = inferredStyle.slang;
+  if (isUnknownValue(turn.style_energy)) turn.style_energy = inferredStyle.energy;
+  if (isUnknownValue(turn.style_directness)) turn.style_directness = inferredStyle.directness;
+  if (isUnknownValue(turn.style_humor)) turn.style_humor = inferredStyle.humor;
+  if (isUnknownValue(turn.style_punctuation)) turn.style_punctuation = inferredStyle.punctuation;
+  if (!turn.style_notes) turn.style_notes = inferredStyle.notes;
+
+  const stageOrder = ['discovery','painpoint','goal','qualification','solution','objection','close'];
+  const currentIndex = Math.max(0, stageOrder.indexOf(turn.stage));
+  let floorIndex = 0;
+  if (!isUnknownValue(turn.pain_point)) floorIndex = Math.max(floorIndex, 1);
+  if (!isUnknownValue(turn.goal)) floorIndex = Math.max(floorIndex, 2);
+  if (!isUnknownValue(turn.goal) && !isUnknownValue(turn.pain_point) && !isUnknownValue(turn.experience)) {
+    floorIndex = Math.max(floorIndex, 3);
+  }
+  turn.stage = stageOrder[Math.max(currentIndex, floorIndex)] as SalesTurn['stage'];
+
+  let scoreFloor = 5;
+  if (!isUnknownValue(turn.goal) || !isUnknownValue(turn.pain_point)) scoreFloor = 20;
+  if (!isUnknownValue(turn.goal) && !isUnknownValue(turn.pain_point)) scoreFloor = 35;
+  if (!isUnknownValue(turn.goal) && !isUnknownValue(turn.pain_point) && !isUnknownValue(turn.experience)) scoreFloor = 45;
+  if (!isUnknownValue(turn.objection)) scoreFloor = Math.max(scoreFloor, 65);
+  turn.score = Math.max(turn.score, scoreFloor);
+
+  turn.temperature = turn.score >= 70 ? 'hot' : turn.score >= 30 ? 'warm' : 'cold';
+
+  if (isUnknownValue(turn.goal)) {
+    turn.next_step = 'Ziel konkretisieren';
+  } else if (isUnknownValue(turn.pain_point)) {
+    turn.next_step = 'Größtes Hindernis verstehen';
+  } else if (isUnknownValue(turn.experience)) {
+    turn.next_step = 'Bisherige Erfahrung verstehen';
+  } else if (!isUnknownValue(turn.objection)) {
+    turn.next_step = 'Einwand konkret klären';
+  } else if (turn.stage === 'qualification') {
+    turn.next_step = 'Fit prüfen und erst dann die passende Lösung erklären';
+  }
+
+  return turn;
+}
+
+function analyzedLeadFromTurn(turn: SalesTurn): D1Row {
+  return {
+    stage: turn.stage,
+    current_stage: turn.stage,
+    temperature: turn.temperature,
+    score: turn.score,
+    goal: turn.goal,
+    pain_point: turn.pain_point,
+    experience: turn.experience,
+    budget: turn.budget,
+    objection: turn.objection,
+    summary: turn.summary,
+    next_step: turn.next_step,
+    memory_json: turnMemoryJson(turn),
+    style_profile_json: turnStyleJson(turn),
+  };
+}
+
+function compactDigits(value: string) {
+  return value.replace(/\D/g, '');
+}
+
+function naturalReplyViolation(
+  reply: string,
+  agent: D1Row,
+  latestLead: string,
+  firstContact: boolean,
+) {
+  const lower = reply.toLowerCase();
+  const offerText = [
+    agent.offer_name || agent.offerName || '',
+    agent.audience || '',
+    agent.pain_points || agent.painPoints || '',
+    agent.outcomes || '',
+    agent.objections || '',
+  ].join(' ').toLowerCase();
+
+  const bannedPhrases = [
+    'kein problem',
+    'das ist großartig',
+    'großartiger startpunkt',
+    'großartiger plan',
+    'ich bin froh',
+    'vielen dank',
+    'ich verstehe, dass',
+    'lass uns gemeinsam',
+  ];
+  for (const phrase of bannedPhrases) {
+    if (lower.includes(phrase)) return `Verwende die Floskel "${phrase}" nicht.`;
+  }
+
+  const categoryWords = ['tool','software','app','plattform','coaching','kurs'];
+  for (const word of categoryWords) {
+    if (new RegExp(`\\b${word}\\b`, 'i').test(reply) && !new RegExp(`\\b${word}\\b`, 'i').test(offerText)) {
+      return `Du hast die nicht belegte Produktbezeichnung "${word}" erfunden. Nutze ausschließlich die hinterlegten Produktfakten.`;
+    }
+  }
+
+  const isPriceQuestion = /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)\b/i.test(latestLead);
+  const priceText = String(agent.price_text || agent.price || '').trim();
+  if (isPriceQuestion && priceText) {
+    const priceDigits = compactDigits(priceText);
+    const replyDigits = compactDigits(reply);
+    const firstPriceChunk = priceDigits.slice(0, Math.min(4, priceDigits.length));
+    if (firstPriceChunk && !replyDigits.includes(firstPriceChunk)) {
+      return `Der Lead fragt konkret nach Preis/Zahlung. Nenne die hinterlegten Preis- bzw. Rateninformationen konkret: ${priceText}`;
+    }
+    if (/\b(variiert|variieren|kommt darauf an|verschiedene optionen)\b/i.test(reply)) {
+      return `Sage bei hinterlegtem Preis nicht, dass die Kosten variieren. Nenne den konkreten Preis: ${priceText}`;
+    }
+  }
+
+  const sentenceCount = reply
+    .split(/[.!?]+(?:\s|$)/)
+    .map((part) => part.trim())
+    .filter(Boolean).length;
+  if (sentenceCount > 2) {
+    return 'Die Antwort ist zu lang. Maximal 1-2 kurze Sätze.';
+  }
+
+  if (!firstContact && ['discovery','painpoint','goal'].includes(String((agent as any).__currentStage || ''))) {
+    // Stage-specific pitch guard is handled in the prompt; this branch is intentionally empty.
+  }
+
+  return '';
+}
+
 async function generateDemoDraft(
   env: Env,
   body: {
@@ -1268,16 +1538,49 @@ async function generateDemoDraft(
 
   const firstContact = leadMessageCount <= 1;
 
-  const [analysis, naturalReply] = await Promise.all([
-    runWorkersAI(env, analysisMessages),
-    runNaturalReply(env, agent, pseudoLead, replyHistory, firstContact),
-  ]);
+  // WICHTIG: Erst analysieren, DANACH antworten.
+  // Dadurch kennt die sichtbare Antwort bereits die neu erkannte Stage, Ziel und Painpoint.
+  const rawAnalysis = await runWorkersAI(env, analysisMessages);
+  const turn = stabilizeDemoAnalysis(
+    rawAnalysis || fallbackTurnFromLead(pseudoLead, 'ANALYSIS_ONLY'),
+    pseudoLead,
+    history,
+  );
 
-  if (!analysis && !naturalReply) return null;
+  const analyzedLead = analyzedLeadFromTurn(turn);
+  const latestLead = lastLeadText(history) || String(body.message || '').trim();
 
-  const turn = analysis || fallbackTurnFromLead(pseudoLead, naturalReply);
-  turn.reply = naturalReply || turn.reply;
+  let naturalReply = await runNaturalReply(
+    env,
+    agent,
+    analyzedLead,
+    replyHistory,
+    firstContact,
+  );
 
+  let violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact);
+  if (violation) {
+    naturalReply = await runNaturalReply(
+      env,
+      agent,
+      analyzedLead,
+      replyHistory,
+      firstContact,
+      violation,
+    );
+    violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact);
+  }
+
+  if (!naturalReply) return null;
+
+  // Letzter defensiver Fallback bei einer direkten Preisfrage:
+  // Lieber eine kurze, korrekte Antwort als erfundene oder ausweichende Preisinformation.
+  if (violation && /(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)/i.test(latestLead)) {
+    const priceText = String(agent.price_text || agent.price || '').trim();
+    if (priceText) naturalReply = `Aktuell: ${priceText}`;
+  }
+
+  turn.reply = naturalReply;
   if (!turn.reply || turn.reply === 'ANALYSIS_ONLY') return null;
   return turn;
 }
