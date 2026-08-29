@@ -644,3 +644,745 @@ body{min-height:100dvh;overflow-x:hidden}
   }
   .bubble{max-width:82%}
 }
+
+
+/* ==========================================================
+   v0.6.3 · GLOBAL XL DESKTOP
+   Nicht nur Inbox: komplette App deutlich größer.
+   Mobile bleibt unverändert touch-optimiert.
+   ========================================================== */
+
+@media (min-width: 761px) {
+  /* APP SHELL + SIDEBAR */
+  .sidebar{
+    width:300px;
+    padding:26px 18px;
+  }
+  .main{margin-left:300px}
+
+  .brand{
+    gap:14px;
+    padding:0 8px 28px;
+  }
+  .brand-mark{
+    width:46px;
+    height:46px;
+    border-radius:14px;
+  }
+  .brand strong{font-size:18px}
+  .brand span{font-size:12.5px}
+
+  .workspace{
+    padding:14px;
+    gap:12px;
+    margin-bottom:22px;
+    border-radius:14px;
+  }
+  .workspace-icon{
+    width:40px;
+    height:40px;
+    border-radius:11px;
+    font-size:15px;
+  }
+  .workspace strong{font-size:15px}
+  .workspace span{font-size:10.5px}
+
+  .sidebar nav{gap:5px}
+  .sidebar nav button{
+    min-height:50px;
+    padding:13px 14px;
+    gap:12px;
+    border-radius:11px;
+    font-size:15px;
+  }
+  .sidebar nav button svg{
+    width:21px;
+    height:21px;
+  }
+  .sidebar nav em{
+    min-width:24px;
+    padding:3px 7px;
+    font-size:11px;
+  }
+
+  .sidebar-bottom{margin-top:auto}
+  .usage{
+    padding:15px;
+    border-radius:14px;
+    margin-bottom:14px;
+  }
+  .usage-head{
+    font-size:11.5px;
+    align-items:center;
+  }
+  .usage-head b{font-size:11.5px}
+  .usage-bar{
+    height:6px;
+    margin:11px 0;
+  }
+  .usage small{
+    font-size:10px;
+    line-height:1.4;
+  }
+
+  .user{
+    padding:11px 10px;
+    gap:10px;
+  }
+  .user strong{font-size:13px}
+  .user span{font-size:10px}
+  .user svg{
+    width:19px;
+    height:19px;
+  }
+
+  /* TOPBAR */
+  .topbar{
+    height:74px;
+    padding:0 34px;
+  }
+  .top-title{
+    gap:9px;
+    font-size:14px;
+  }
+  .demo-pill{
+    font-size:11px;
+    padding:8px 12px;
+  }
+  .connect-mini{
+    padding:11px 13px;
+    font-size:12.5px;
+    border-radius:10px;
+  }
+
+  /* GLOBAL CONTENT */
+  .content{
+    padding:30px;
+    max-width:none;
+  }
+  .content-inbox{
+    height:calc(100dvh - 74px);
+    padding:22px 24px 24px;
+  }
+
+  .eyebrow{font-size:11px}
+  .page-head{
+    margin-bottom:26px;
+    gap:20px;
+  }
+  .page-head h1{
+    font-size:35px;
+    margin:6px 0 9px;
+  }
+  .page-head p{
+    font-size:14px;
+    line-height:1.65;
+    max-width:760px;
+  }
+
+  .primary,.secondary{
+    min-height:44px;
+    padding:12px 17px;
+    gap:8px;
+    font-size:13px;
+    border-radius:10px;
+  }
+  .text-btn{font-size:11.5px}
+
+  /* DASHBOARD */
+  .connect-banner{
+    padding:19px 21px;
+    gap:16px;
+    border-radius:15px;
+    margin-bottom:20px;
+  }
+  .connect-icon{
+    width:45px;
+    height:45px;
+    border-radius:12px;
+  }
+  .connect-banner b{font-size:14px}
+  .connect-banner p{
+    font-size:11.5px;
+    margin-top:5px;
+  }
+  .connect-banner button{
+    padding:11px 14px;
+    font-size:12px;
+    border-radius:9px;
+  }
+
+  .metrics{
+    gap:16px;
+    margin-bottom:16px;
+  }
+  .metric{
+    padding:21px;
+    border-radius:14px;
+  }
+  .metric-top{margin-bottom:17px}
+  .metric-icon{
+    width:39px;
+    height:39px;
+    border-radius:10px;
+  }
+  .trend{
+    font-size:10.5px;
+    padding:5px 8px;
+  }
+  .metric>strong{
+    font-size:32px;
+  }
+  .metric>span:last-child{
+    font-size:12.5px;
+    margin-top:6px;
+  }
+
+  .dashboard-grid{gap:16px}
+  .panel{border-radius:14px}
+  .panel-head{padding:18px 19px}
+  .panel-head b{font-size:14px}
+  .panel-head span{
+    font-size:11px;
+    margin-top:4px;
+  }
+  .live{
+    font-size:9.5px!important;
+    padding:6px 9px;
+  }
+
+  .funnel{padding:14px 19px 18px}
+  .funnel-row{
+    grid-template-columns:150px 1fr 36px;
+    gap:12px;
+    padding:9px 0;
+  }
+  .funnel-row>div:first-child{font-size:11.5px}
+  .funnel-row em{font-size:10px}
+  .funnel-row b{font-size:12px}
+  .bar{height:9px}
+
+  .hot-list button{
+    padding:15px 18px;
+    gap:12px;
+  }
+  .hot-info b{font-size:12.5px}
+  .hot-info span{
+    font-size:10.5px;
+    margin-top:4px;
+  }
+  .score b{font-size:13px}
+  .score span{font-size:9px}
+
+  .agent-status{
+    margin-top:16px;
+    padding:18px 20px;
+    gap:15px;
+  }
+  .agent-orb{
+    width:44px;
+    height:44px;
+    border-radius:12px;
+  }
+  .agent-status b{font-size:13.5px}
+  .agent-status p{
+    font-size:11.5px;
+    margin-top:5px;
+  }
+  .status-chips span,.feature-chips span{
+    font-size:10px;
+    padding:7px 9px;
+  }
+
+  /* INBOX */
+  .inbox-title{
+    height:80px;
+    padding:18px 18px 10px;
+  }
+  .inbox-title h2{font-size:22px}
+  .filter{
+    width:40px;
+    height:40px;
+    border-radius:10px;
+  }
+
+  .search{
+    margin:0 16px 11px;
+    padding:11px 12px;
+    border-radius:10px;
+  }
+  .search input{font-size:12.5px}
+
+  .tabs{
+    padding:0 16px;
+    gap:21px;
+  }
+  .tabs button{
+    font-size:11.5px;
+    padding:11px 0;
+  }
+
+  .conv-items button{
+    min-height:84px;
+    padding:15px 16px;
+    gap:12px;
+  }
+  .avatar{
+    width:43px;
+    height:43px;
+    border-radius:12px;
+    font-size:14px;
+  }
+  .conv-copy b{font-size:13px}
+  .conv-copy time{font-size:9px}
+  .conv-copy>span{
+    font-size:11px;
+    margin:7px 0 9px;
+  }
+  .conv-meta em{
+    font-size:9px;
+    padding:5px 7px;
+  }
+
+  .chat-head{
+    height:80px;
+    padding:14px 18px;
+    gap:12px;
+  }
+  .chat-head b{font-size:14px}
+  .chat-head span{font-size:10px}
+  .chat-actions button{
+    min-height:40px;
+    padding:9px 12px;
+    font-size:10.5px;
+    border-radius:10px;
+  }
+
+  .stage-line{padding:10px 16px}
+  .stage-line>span{font-size:9px}
+  .stage-line>div{gap:6px}
+  .stage-line i{
+    font-size:9.5px;
+    padding:6px 8px;
+  }
+
+  .messages{padding:24px 21px}
+  .message-row{margin:11px 0}
+  .bubble{
+    max-width:80%;
+    padding:13px 15px 10px;
+    border-radius:15px;
+    font-size:13px;
+    line-height:1.58;
+  }
+  .speaker{
+    font-size:9.5px;
+    margin-bottom:6px;
+  }
+  .bubble time{
+    font-size:8px;
+    margin-top:5px;
+  }
+
+  .composer{padding:13px 15px}
+  .ai-draft{
+    min-height:35px;
+    padding:8px 10px;
+    margin-bottom:8px;
+    font-size:10.5px;
+  }
+  .compose-row textarea{
+    min-height:52px;
+    max-height:110px;
+    padding:12px 13px;
+    border-radius:11px;
+    font-size:13px;
+    line-height:1.45;
+  }
+  .compose-row button{
+    width:50px;
+    min-width:50px;
+    border-radius:11px;
+  }
+  .composer small{
+    font-size:8.5px;
+    margin-top:7px;
+  }
+
+  .lead-head{padding:20px 17px}
+  .score-ring{
+    width:96px;
+    height:96px;
+    margin:15px auto 11px;
+  }
+  .score-ring:before{inset:8px}
+  .score-ring strong{
+    font-size:21px;
+    top:28px;
+  }
+  .score-ring span{
+    font-size:8px;
+    top:54px;
+  }
+  .lead-head h3{font-size:15px}
+  .lead-head p{font-size:10px}
+  .lead-section{padding:14px 16px}
+  .lead-section label,.intel label{
+    font-size:9px;
+    margin-bottom:6px;
+  }
+  .stage-pill{
+    font-size:10px;
+    padding:7px 9px;
+  }
+  .intel{
+    padding:13px 16px;
+    gap:10px;
+  }
+  .intel svg{
+    width:18px;
+    height:18px;
+  }
+  .intel p{
+    font-size:10.5px;
+    line-height:1.52;
+  }
+  .lead-note{
+    margin:14px;
+    padding:13px;
+  }
+  .lead-note p{
+    font-size:9.8px;
+    line-height:1.55;
+  }
+
+  /* LEADS */
+  .table-panel th{
+    padding:14px 17px;
+    font-size:10.5px;
+  }
+  .table-panel td{
+    padding:15px 17px;
+    font-size:12px;
+  }
+  .person{gap:10px}
+  .person b{font-size:13px}
+  .person span{
+    font-size:10.5px;
+    margin-top:3px;
+  }
+  .score-cell{gap:10px}
+  .mini-score{
+    width:78px;
+    height:7px;
+  }
+  .ai-state{
+    padding:6px 8px;
+    font-size:10px;
+  }
+
+  /* AUTOMATIONEN */
+  .automation-grid{gap:16px}
+  .automation-card{
+    padding:21px;
+    border-radius:15px;
+  }
+  .automation-icon{
+    width:46px;
+    height:46px;
+    border-radius:12px;
+    margin-bottom:18px;
+  }
+  .coming{
+    top:17px;
+    right:17px;
+    padding:6px 8px;
+    font-size:9px;
+  }
+  .automation-card h3{
+    font-size:17px;
+    margin-bottom:9px;
+  }
+  .automation-card p{
+    min-height:48px;
+    font-size:12px;
+    line-height:1.6;
+  }
+  .flow-preview{
+    gap:7px;
+    padding:11px;
+    margin:14px 0;
+    font-size:9.5px;
+  }
+  .flow-preview span{padding:6px 8px}
+
+  /* AI AGENT */
+  .agent-layout{
+    grid-template-columns:minmax(0,1fr) 340px;
+    gap:17px;
+  }
+  .form-panel{padding:22px}
+  .form-section{
+    gap:13px;
+    margin-bottom:17px;
+  }
+  .section-num{
+    width:35px;
+    height:35px;
+    border-radius:10px;
+    font-size:11px;
+  }
+  .form-section h3{font-size:15px}
+  .form-section p{
+    font-size:10.5px;
+    margin-top:4px;
+  }
+  .form-section.split{
+    margin-top:29px;
+    padding-top:23px;
+  }
+  .form-grid{gap:13px}
+  .form-grid label span{
+    font-size:11px;
+    margin-bottom:7px;
+  }
+  .form-grid input,.form-grid textarea{
+    padding:12px 13px;
+    border-radius:9px;
+    font-size:13px;
+  }
+  .form-grid textarea{
+    min-height:125px;
+    line-height:1.6;
+  }
+
+  .agent-preview{
+    padding:25px;
+    border-radius:15px;
+  }
+  .agent-orb.large{
+    width:66px;
+    height:66px;
+    border-radius:18px;
+    margin-bottom:21px;
+  }
+  .agent-preview h3{
+    font-size:20px;
+    margin:8px 0;
+  }
+  .agent-preview>p{
+    font-size:11.5px;
+    line-height:1.65;
+    margin-bottom:20px;
+  }
+  .logic{
+    gap:11px;
+    padding:8px 0;
+  }
+  .logic i{
+    width:26px;
+    height:26px;
+    border-radius:8px;
+    font-size:10px;
+  }
+  .logic span{font-size:12px}
+  .logic div{
+    left:12.5px;
+    top:27px;
+    height:17px;
+  }
+  .guardrail{
+    margin-top:20px;
+    padding:13px;
+    gap:10px;
+  }
+  .guardrail b{font-size:11.5px}
+  .guardrail span{
+    font-size:9.5px;
+    line-height:1.55;
+  }
+
+  /* ANALYTICS */
+  .chart-panel{padding-bottom:18px}
+  .big-bars{padding:19px}
+  .big-bars>div{
+    grid-template-columns:150px 1fr 46px;
+    gap:14px;
+    margin:13px 0;
+  }
+  .big-bars span,.big-bars b{font-size:11.5px}
+  .big-bars>div>div{height:14px}
+
+  /* INTEGRATIONEN */
+  .integration-card{
+    padding:23px;
+    gap:19px;
+    border-radius:15px;
+  }
+  .instagram-logo{
+    width:60px;
+    height:60px;
+    border-radius:16px;
+  }
+  .integration-info h3{font-size:17px}
+  .official{
+    padding:5px 7px;
+    font-size:9px;
+  }
+  .integration-info p{
+    font-size:12px;
+    line-height:1.6;
+  }
+  .feature-chips{gap:8px}
+  .feature-chips span{
+    font-size:10.5px;
+    padding:7px 9px;
+  }
+  .integration-action>span{
+    font-size:10px;
+    margin-bottom:11px;
+  }
+
+  .notice{
+    padding:15px 17px;
+    gap:11px;
+    border-radius:12px;
+  }
+  .notice b{font-size:12px}
+  .notice p{
+    font-size:10px;
+    margin-top:4px;
+  }
+
+  .setup-step{
+    padding:15px 19px;
+    gap:12px;
+  }
+  .setup-step i{
+    width:32px;
+    height:32px;
+    border-radius:9px;
+    font-size:10px;
+  }
+  .setup-step b{font-size:12px}
+  .setup-step span{
+    font-size:10.5px;
+    margin-top:4px;
+  }
+
+  /* BILLING */
+  .plans{
+    grid-template-columns:repeat(2,minmax(360px,420px));
+    gap:19px;
+  }
+  .plan-card{
+    padding:26px;
+    border-radius:16px;
+  }
+  .plan-card>span{font-size:11px}
+  .plan-card h3{
+    font-size:34px;
+    margin:11px 0;
+  }
+  .plan-card h3 small{font-size:12px}
+  .plan-card p{
+    font-size:11.5px;
+    line-height:1.55;
+    padding-bottom:17px;
+  }
+  .plan-card>div{
+    gap:9px;
+    margin:12px 0;
+    font-size:12px;
+  }
+  .plan-card>div svg{width:16px}
+  .plan-card button{margin-top:13px}
+
+  /* EINSTELLUNGEN */
+  .settings-list button{
+    min-height:70px;
+    padding:19px;
+  }
+  .settings-list b{font-size:13px}
+  .settings-list span{
+    font-size:11px;
+    margin-top:4px;
+  }
+  .settings-list svg{
+    width:20px;
+    height:20px;
+  }
+
+  /* TEST-CHAT */
+  .test-chat-head{padding:15px 18px}
+  .test-chat-head>div:nth-child(2)>b{font-size:14px}
+  .test-chat-head>div:nth-child(2)>span{font-size:10px}
+  .test-offer span{font-size:9px}
+  .test-offer b{font-size:11px}
+  .test-messages{padding:23px 20px}
+  .test-empty b{font-size:15px}
+  .test-empty p{font-size:11px}
+  .test-compose-row textarea{
+    min-height:54px;
+    padding:12px 13px;
+    font-size:13px;
+  }
+  .test-compose-row .primary{min-width:145px}
+  .test-composer small{font-size:9px}
+  .test-error{font-size:10px}
+  .test-temp{font-size:9px}
+  .test-score{
+    width:105px;
+    height:105px;
+  }
+  .test-score strong{font-size:28px}
+  .test-score span{font-size:9px}
+  .test-intel-row{
+    padding:13px 15px;
+  }
+  .test-intel-row label{font-size:9px}
+  .test-intel-row p{
+    font-size:10.5px;
+    line-height:1.55;
+  }
+  .test-next-step{
+    margin:14px;
+    padding:13px;
+  }
+  .test-next-step b{font-size:10px}
+  .test-next-step p{font-size:10px}
+
+  /* LOGIN ebenfalls größer */
+  .login-brand{font-size:15px}
+  .login-copy h1{font-size:56px}
+  .login-copy>p{font-size:14px}
+  .login-flow>span{
+    padding:10px 12px;
+    font-size:10.5px;
+  }
+  .login-form h2{font-size:31px}
+  .login-form>p{font-size:11.5px}
+  .login-form label span{font-size:10.5px}
+  .login-form input{
+    padding:12px 13px;
+    font-size:12px;
+  }
+  .meta-login{font-size:12px}
+  .login-form>small{font-size:8.5px}
+}
+
+/* Breiter Desktop: 3 Spalten großzügig */
+@media (min-width: 1200px) {
+  .inbox-wrap{
+    grid-template-columns:350px minmax(540px,1fr) 330px;
+  }
+}
+
+/* Tablet: Lead Intelligence ausblenden, Chat bleibt groß */
+@media (min-width:761px) and (max-width:1199px) {
+  .inbox-wrap{
+    grid-template-columns:320px minmax(0,1fr);
+  }
+  .lead-card{display:none}
+  .bubble{max-width:84%}
+}
