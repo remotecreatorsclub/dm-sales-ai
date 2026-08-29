@@ -4,3 +4,36 @@
 @media(max-width:760px){.sidebar{transform:translateX(-100%);transition:.2s}.sidebar.open{transform:translateX(0)}.mobile-close{display:block;position:absolute;right:10px;top:10px;border:0;background:none;color:white}.overlay{position:fixed;inset:0;background:#07111f88;z-index:25}.main{margin-left:0}.menu-btn{display:grid;place-items:center;border:0;background:none;margin-right:8px}.topbar{padding:0 13px}.top-title span,.top-title b{display:none}.connect-mini{display:none}.content{padding:18px 12px}.page-head{align-items:flex-start;gap:12px}.page-head h1{font-size:23px}.page-head .primary,.page-head .secondary{white-space:nowrap}.metrics{grid-template-columns:1fr 1fr;gap:9px}.metric{padding:13px}.metric>strong{font-size:21px}.connect-banner{align-items:flex-start}.connect-banner button{display:none}.status-chips{display:none}.inbox-wrap{height:calc(100vh - 100px);display:block}.conversation-list{height:100%;border-right:0}.chat{display:none}.automation-grid{grid-template-columns:1fr}.agent-layout{grid-template-columns:1fr}.agent-preview{position:static}.form-grid{grid-template-columns:1fr}.plans{grid-template-columns:1fr}.integration-card{align-items:flex-start;flex-wrap:wrap}.integration-info{min-width:200px}.integration-action{text-align:left;width:100%;padding-left:68px}.big-bars>div{grid-template-columns:92px 1fr 30px}.funnel-row{grid-template-columns:105px 1fr 24px}}
 .login-page{min-height:100vh;display:grid;grid-template-columns:1.08fr .92fr;background:#fff}.login-visual{background:radial-gradient(circle at 80% 20%,#463a9c 0,transparent 28%),radial-gradient(circle at 20% 85%,#14386a 0,transparent 32%),#07111f;color:#fff;padding:38px 48px;display:flex;flex-direction:column;position:relative;overflow:hidden}.login-visual:after{content:'';position:absolute;width:420px;height:420px;border:1px solid #ffffff12;border-radius:50%;right:-170px;bottom:-150px;box-shadow:0 0 0 70px #ffffff05,0 0 0 140px #ffffff03}.login-brand{display:flex;align-items:center;gap:10px;font-size:13px;z-index:1}.login-copy{margin:auto 0;max-width:620px;z-index:1}.eyebrow.light{color:#a99fff}.login-copy h1{font-size:50px;line-height:1.02;letter-spacing:-.055em;margin:15px 0 18px}.login-copy h1 em{font-style:normal;background:linear-gradient(90deg,#9f92ff,#e88cff);-webkit-background-clip:text;background-clip:text;color:transparent}.login-copy>p{font-size:13px;line-height:1.75;color:#9caabc;max-width:530px}.login-flow{display:flex;align-items:center;gap:8px;margin-top:28px;flex-wrap:wrap}.login-flow>span{border:1px solid #26364c;background:#101e31;border-radius:10px;padding:9px 10px;font-size:9px;color:#d4dce7;display:flex;align-items:center;gap:6px}.login-flow>span svg{width:14px;color:#9e91ff}.login-flow>svg{width:13px;color:#44546b}.login-visual>small{font-size:8px;color:#65748b;z-index:1}.login-form-wrap{display:grid;place-items:center;padding:30px}.login-form{width:min(390px,100%)}.login-form h2{font-size:28px;letter-spacing:-.04em;margin:7px 0}.login-form>p{font-size:10px;line-height:1.6;color:#7b8797;margin:0 0 23px}.login-form label{display:block;margin:12px 0}.login-form label span{display:block;font-size:9px;font-weight:700;color:#4a5b70;margin-bottom:6px}.login-form input{width:100%;border:1px solid #dfe5ec;border-radius:9px;padding:11px 12px;outline:none;font-size:10px}.login-form input:focus{border-color:#8b7df0;box-shadow:0 0 0 3px #6d5dfc10}.login-submit{width:100%;justify-content:center;margin-top:7px;padding:12px}.login-divider{height:30px;display:flex;align-items:center;justify-content:center;position:relative;margin:8px 0}.login-divider:before{content:'';position:absolute;left:0;right:0;height:1px;background:#e7ebf0}.login-divider span{z-index:1;background:#fff;padding:0 9px;font-size:8px;color:#9aa5b2}.meta-login{width:100%;border:1px solid #dfe5ec;background:#fff;border-radius:9px;padding:11px;display:flex;justify-content:center;align-items:center;gap:7px;font-size:10px;font-weight:700;color:#34455a;cursor:pointer}.login-form>small{display:block;text-align:center;font-size:7px;color:#9da7b4;margin-top:12px}
 @media(max-width:850px){.login-page{grid-template-columns:1fr}.login-visual{min-height:350px;padding:28px 24px}.login-copy h1{font-size:38px}.login-form-wrap{padding:36px 20px}.login-flow{display:none}}
+/* FIX: Inbox Chat scrollbar + Composer immer sichtbar */
+
+.inbox-wrap {
+  min-height: 0;
+}
+
+.chat {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.composer {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 5;
+  background: #fff;
+}
+
+.chat-head,
+.stage-line {
+  flex-shrink: 0;
+}
