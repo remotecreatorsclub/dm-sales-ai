@@ -1446,3 +1446,226 @@ body{min-height:100dvh;overflow-x:hidden}
     overflow-x:hidden!important;
   }
 }
+
+
+/* ==========================================================
+   v0.6.5 · DESKTOP LAYOUT FIX
+   Verhindert horizontales Abschneiden und optimiert die Inbox
+   für normale Desktop-/Laptop-Breiten.
+   ========================================================== */
+
+@media (min-width: 761px) {
+  /* Globale Schutzregeln gegen horizontales Überlaufen */
+  .main,
+  .content,
+  .content-inbox,
+  .inbox-wrap,
+  .conversation-list,
+  .chat,
+  .lead-card,
+  .panel,
+  .metric,
+  .automation-card,
+  .integration-card,
+  .plan-card,
+  .agent-layout,
+  .dashboard-grid,
+  .metrics {
+    min-width:0;
+  }
+
+  .content{
+    width:100%;
+    overflow-x:hidden;
+  }
+
+  .content-inbox{
+    width:100%;
+    overflow:hidden;
+    padding-left:18px;
+    padding-right:18px;
+  }
+
+  /* WICHTIG:
+     Die bisherigen festen Spalten waren auf 13"-15" Laptops zusammen
+     breiter als der verfügbare Bereich. Jetzt verteilen sie sich flexibel. */
+  .inbox-wrap{
+    width:100%;
+    max-width:100%;
+    grid-template-columns:
+      minmax(260px, .95fr)
+      minmax(430px, 1.8fr)
+      minmax(250px, .95fr);
+    overflow:hidden;
+  }
+
+  .conversation-list,
+  .chat,
+  .lead-card{
+    width:auto;
+    max-width:100%;
+    min-width:0;
+  }
+
+  /* Linke Gesprächsliste */
+  .conv-copy,
+  .conv-copy>div,
+  .hot-info,
+  .person>div:last-child{
+    min-width:0;
+  }
+
+  .conv-copy b,
+  .conv-copy>span,
+  .hot-info span,
+  .person span{
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  /* Mittlerer Chat */
+  .chat-head>div:nth-child(2){
+    min-width:0;
+  }
+
+  .chat-head b,
+  .chat-head span{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .messages{
+    min-width:0;
+  }
+
+  .bubble{
+    min-width:0;
+    max-width:82%;
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+
+  .compose-row,
+  .compose-row textarea{
+    min-width:0;
+  }
+
+  /* Rechte Lead Intelligence:
+     Text MUSS umbrechen statt rechts abgeschnitten zu werden. */
+  .lead-card{
+    overflow-x:hidden;
+  }
+
+  .lead-head,
+  .lead-section,
+  .intel,
+  .lead-note{
+    max-width:100%;
+  }
+
+  .intel{
+    align-items:flex-start;
+  }
+
+  .intel>div{
+    flex:1 1 auto;
+    min-width:0;
+    max-width:100%;
+  }
+
+  .intel p,
+  .lead-note p,
+  .lead-head p,
+  .lead-section,
+  .test-intel-row p,
+  .test-next-step p{
+    max-width:100%;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+
+  .stage-pill{
+    max-width:100%;
+    white-space:normal;
+    line-height:1.35;
+  }
+
+  /* Dashboard / andere Seiten */
+  .page-head>div{
+    min-width:0;
+  }
+
+  .page-head h1,
+  .page-head p,
+  .panel-head>div,
+  .integration-info,
+  .settings-list button>div{
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .feature-chips,
+  .status-chips{
+    flex-wrap:wrap;
+  }
+
+  .plans{
+    max-width:100%;
+  }
+
+  .plan-card{
+    width:100%;
+  }
+
+  .table-panel{
+    max-width:100%;
+    overflow-x:auto;
+  }
+}
+
+/* Normale Desktop-/Laptopbreite:
+   alle drei Inbox-Spalten bleiben sichtbar, aber ohne Überlauf. */
+@media (min-width: 1200px) and (max-width: 1599px) {
+  .inbox-wrap{
+    grid-template-columns:
+      minmax(270px, .92fr)
+      minmax(430px, 1.72fr)
+      minmax(255px, .9fr);
+  }
+
+  .lead-head{padding-left:13px;padding-right:13px}
+  .lead-section{padding-left:13px;padding-right:13px}
+  .intel{padding-left:13px;padding-right:13px}
+  .lead-note{margin-left:11px;margin-right:11px}
+}
+
+/* Sehr breite Desktop-Monitore dürfen wieder etwas großzügiger werden. */
+@media (min-width: 1600px) {
+  .content-inbox{
+    padding-left:24px;
+    padding-right:24px;
+  }
+
+  .inbox-wrap{
+    grid-template-columns:
+      minmax(320px, .95fr)
+      minmax(560px, 1.75fr)
+      minmax(300px, .92fr);
+  }
+}
+
+/* Tablet / kleine Laptops:
+   Lead Intelligence ausblenden, damit die Kern-Inbox sauber bleibt. */
+@media (min-width: 761px) and (max-width: 1199px) {
+  .inbox-wrap{
+    grid-template-columns:minmax(270px, .85fr) minmax(0, 1.75fr);
+  }
+
+  .lead-card{
+    display:none!important;
+  }
+}
