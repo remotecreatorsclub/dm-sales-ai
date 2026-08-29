@@ -1043,15 +1043,7 @@ async function runNaturalReply(
 
   try {
     const latestLead = [...history].reverse().find((m) => m.role === 'user')?.content || '';
-    const informationalQuestion = /\b(kannst du .*erklären|wie funktioniert|was genau|wie genau|welche wege|was ist enthalten|wie verdient|was kostet|kosten|preis|raten|klarna)\b/i.test(latestLead);
-  if (
-    informationalQuestion &&
-    /^(ja[,!. ]+)?(das ist|verstehe|ich verstehe|klar,? das ist|okay,? das ist)/i.test(reply.trim())
-  ) {
-    return 'Direkte Informationsfrage: ohne Validierungs-/Empathie-Füllsatz starten. Beginne unmittelbar mit der sachlichen Antwort.';
-  }
-
-  const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
+    const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
     const recentAI = history.filter((m) => m.role === 'assistant').slice(-2);
     const recentQuestionCount = recentAI.filter((m) => /\?\s*$/.test(m.content.trim())).length;
     const shortConsent = /^\s*(ja|ja gern|ja gerne|gerne|gern|okay|ok|klar|genau|mach|bitte|yes|sure)[.! ]*$/i.test(latestLead);
@@ -1243,7 +1235,7 @@ async function runWorkersAI(
       {
         messages,
         temperature: 0.2,
-        max_tokens: 620,
+        max_tokens: 950,
         response_format: {
           type: 'json_schema',
           json_schema: SALES_SCHEMA,
@@ -1272,7 +1264,7 @@ async function runWorkersAI(
       {
         messages: fallbackMessages,
         temperature: 0.15,
-        max_tokens: 620,
+        max_tokens: 950,
       } as any,
     );
 
@@ -1673,6 +1665,14 @@ function naturalReplyViolation(
     if (lower.includes(phrase)) return `Verwende die Floskel "${phrase}" nicht.`;
   }
 
+  const informationalQuestion = /\b(kannst du .*erklären|wie funktioniert|was genau|wie genau|welche wege|was ist enthalten|wie verdient|was kostet|kosten|preis|raten|klarna)\b/i.test(latestLead);
+  if (
+    informationalQuestion &&
+    /^(ja[,!. ]+)?(das ist|verstehe|ich verstehe|klar,? das ist|okay,? das ist)/i.test(reply.trim())
+  ) {
+    return 'Direkte Informationsfrage: ohne Validierungs-/Empathie-Füllsatz starten. Beginne unmittelbar mit der sachlichen Antwort.';
+  }
+
   const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
   const shortConsent = /^\s*(ja|ja gern|ja gerne|gerne|gern|okay|ok|klar|genau|mach|bitte|yes|sure)[.! ]*$/i.test(latestLead);
   if (
@@ -1851,7 +1851,18 @@ async function generateDemoDraft(
     violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact, analyzedLead, replyHistory);
   }
 
-  if (!naturalReply) return null;
+  if (!naturalReply) {
+    const offerName = String(agent.offer_name || agent.offerName || '').trim();
+    const outcomes = String(agent.outcomes || '').split('\n').map((x) => x.trim()).filter(Boolean);
+    if (firstContact && /\b(wie funktioniert|was genau|was ist|worum geht)\b/i.test(latestLead)) {
+      const core = outcomes[0] || 'einen klaren Startweg für dein digitales Online-Business';
+      naturalReply = offerName
+        ? `${offerName} hilft dir dabei, ${core.charAt(0).toLowerCase() + core.slice(1)}. Bist du da noch ganz am Anfang?`
+        : `Im Kern geht's darum, dir ${core.charAt(0).toLowerCase() + core.slice(1)} zu geben. Bist du da noch ganz am Anfang?`;
+    } else {
+      return null;
+    }
+  }
 
   // Bei klarer Startabsicht niemals weiterqualifizieren: direkt zum hinterlegten Checkout.
   if (violation && /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead)) {
@@ -1864,7 +1875,7 @@ async function generateDemoDraft(
 
   // Letzter defensiver Fallback bei einer direkten Preisfrage:
   // Lieber eine kurze, korrekte Antwort als erfundene oder ausweichende Preisinformation.
-  if (violation && /(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)/i.test(latestLead)) {
+  if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)\b/i.test(latestLead)) {
     const priceText = String(agent.price_text || agent.price || '').trim();
     if (priceText) naturalReply = `Aktuell: ${priceText}`;
   }
