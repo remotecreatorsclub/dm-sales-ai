@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dm-sales-ai",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-29",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "DEMO_MODE": "true"
+  }
+
+  // Production D1 binding — add after: npx wrangler d1 create dm-sales-ai
+  // "d1_databases": [{
+  //   "binding": "DB",
+  //   "database_name": "dm-sales-ai",
+  //   "database_id": "YOUR_DATABASE_ID",
+  //   "migrations_dir": "migrations"
+  // }]
+}
