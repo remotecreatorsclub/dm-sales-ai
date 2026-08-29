@@ -10,7 +10,12 @@
   },
 
   "vars": {
-    "DEMO_MODE": "true"
+    "DEMO_MODE": "true",
+    "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it"
+  },
+
+  "ai": {
+    "binding": "AI"
   },
 
   "d1_databases": [
