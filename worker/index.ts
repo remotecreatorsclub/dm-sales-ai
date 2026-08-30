@@ -348,6 +348,11 @@ const demoBootstrap = {
     offerName: 'Dein Hauptangebot',
     productKnowledge: '',
     price: '1.197 €',
+    paymentPlan: '',
+    paymentMethods: '',
+    paymentHint: '',
+    showPaymentHintWithPrice: false,
+    checkoutCta: 'Hier kannst du direkt starten:',
     audience: 'Menschen, die ein digitales Business aufbauen möchten',
     painPoints:
       'Kein klarer Startpunkt\nTechnik-Überforderung\nFehlende Strategie\nAngst, Geld zu verschwenden',
@@ -459,6 +464,11 @@ async function bootstrap(env: Env) {
       offerName: agent.offer_name || '',
       productKnowledge: agent.offer_description || '',
       price: agent.price_text || '',
+      paymentPlan: agent.payment_plan_text || '',
+      paymentMethods: agent.payment_methods || '',
+      paymentHint: agent.payment_hint || '',
+      showPaymentHintWithPrice: Boolean(agent.show_payment_hint_with_price),
+      checkoutCta: agent.checkout_cta_text || '',
       audience: agent.audience || '',
       painPoints: agent.pain_points || '',
       outcomes: agent.outcomes || '',
@@ -494,6 +504,11 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
     String(body.offerName || ''),
     String(body.productKnowledge || ''),
     String(body.price || ''),
+    String(body.paymentPlan || ''),
+    String(body.paymentMethods || ''),
+    String(body.paymentHint || ''),
+    body.showPaymentHintWithPrice === true ? 1 : 0,
+    String(body.checkoutCta || ''),
     String(body.audience || ''),
     String(body.painPoints || ''),
     String(body.outcomes || ''),
@@ -509,14 +524,14 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
   if (existing) {
     await env.DB
       .prepare(
-        'UPDATE ai_agents SET name=?,active=?,offer_name=?,offer_description=?,price_text=?,audience=?,pain_points=?,outcomes=?,objections=?,checkout_url=?,booking_url=?,tone=?,system_instructions=?,qualification_rules=?,guardrails=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        'UPDATE ai_agents SET name=?,active=?,offer_name=?,offer_description=?,price_text=?,payment_plan_text=?,payment_methods=?,payment_hint=?,show_payment_hint_with_price=?,checkout_cta_text=?,audience=?,pain_points=?,outcomes=?,objections=?,checkout_url=?,booking_url=?,tone=?,system_instructions=?,qualification_rules=?,guardrails=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
       )
       .bind(...values, existing.id)
       .run();
   } else {
     await env.DB
       .prepare(
-        'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,offer_description,price_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone,system_instructions,qualification_rules,guardrails) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,offer_description,price_text,payment_plan_text,payment_methods,payment_hint,show_payment_hint_with_price,checkout_cta_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone,system_instructions,qualification_rules,guardrails) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
       .bind(crypto.randomUUID(), DEMO_ORG, ...values)
       .run();
@@ -536,6 +551,11 @@ Name: ${agent.offer_name || agent.offerName || ''}
 Verbindliches Produktwissen / Knowledge Base:
 ${agent.offer_description || agent.productKnowledge || 'Keine zusätzlichen Produktfakten hinterlegt.'}
 Preis: ${agent.price_text || agent.price || ''}
+Raten / Preisoptionen: ${agent.payment_plan_text || agent.paymentPlan || 'Nicht hinterlegt'}
+Zahlungsarten: ${agent.payment_methods || agent.paymentMethods || 'Nicht hinterlegt'}
+Zahlungshinweis: ${agent.payment_hint || agent.paymentHint || 'Nicht hinterlegt'}
+Zahlungshinweis direkt bei Preisfrage: ${(agent.show_payment_hint_with_price ?? agent.showPaymentHintWithPrice) ? 'JA' : 'NEIN'}
+Checkout CTA: ${agent.checkout_cta_text || agent.checkoutCta || 'Hier kannst du direkt starten:'}
 Zielgruppe: ${agent.audience || ''}
 Painpoints: ${agent.pain_points || agent.painPoints || ''}
 Gewünschte Ergebnisse: ${agent.outcomes || ''}
@@ -711,6 +731,11 @@ Name: ${agent.offer_name || agent.offerName || ''}
 Verbindliches Produktwissen / Knowledge Base:
 ${agent.offer_description || agent.productKnowledge || 'Keine zusätzlichen Produktfakten hinterlegt.'}
 Preis: ${agent.price_text || agent.price || ''}
+Raten / Preisoptionen: ${agent.payment_plan_text || agent.paymentPlan || 'Nicht hinterlegt'}
+Zahlungsarten: ${agent.payment_methods || agent.paymentMethods || 'Nicht hinterlegt'}
+Zahlungshinweis: ${agent.payment_hint || agent.paymentHint || 'Nicht hinterlegt'}
+Zahlungshinweis direkt bei Preisfrage: ${(agent.show_payment_hint_with_price ?? agent.showPaymentHintWithPrice) ? 'JA' : 'NEIN'}
+Checkout CTA: ${agent.checkout_cta_text || agent.checkoutCta || 'Hier kannst du direkt starten:'}
 Zielgruppe: ${agent.audience || ''}
 Painpoints: ${agent.pain_points || agent.painPoints || ''}
 Gewünschte Ergebnisse: ${agent.outcomes || ''}
@@ -888,10 +913,11 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 13. Keine erfundenen Fakten, Garantien, falsche Knappheit oder Druck.
 14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
 15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
-15a. Bei einer allgemeinen Preisfrage wie "Was kostet das?" nenne Einmalpreis, reguläre Ratenzahlung UND direkt den Klarna-Hinweis.
-Formuliere sinngemäß:
-"1.197 € einmalig oder 12 × 119 €. Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten als 119 € angezeigt werden. :)"
-WICHTIG: Niemals garantieren, dass Klarna tatsächlich unter 119 € pro Monat liegt. Es ist nur eine mögliche, individuell von Klarna angebotene Option.
+15a. Zahlungsinformationen sind vollständig agent-spezifisch. Verwende ausschließlich die oben hinterlegten Felder Preis, Raten/Preisoptionen, Zahlungsarten und Zahlungshinweis.
+- Wenn "Zahlungshinweis direkt bei Preisfrage: JA", füge den hinterlegten Zahlungshinweis bei einer allgemeinen Preisfrage direkt hinzu.
+- Wenn "NEIN", nenne ihn nur, wenn er zur konkreten Frage passt.
+- Erfinde niemals eine Zahlungsart, Rate, Finanzierung, Ersparnis oder Verfügbarkeit.
+- Wenn ein Zahlungsfeld leer ist, verschweige es.
 16. Bei konkreten Produktfragen wie "Wie verdient man damit?", "Was ist enthalten?" oder "Welche Wege gibt es?" hat die sachlich korrekte Antwort aus der Knowledge Base Vorrang vor einer weiteren Qualifizierungsfrage.
 16a. Bei einer sachlichen Informationsfrage beginne DIREKT mit der Antwort. Kein vorgeschaltetes Lob, keine Validierung und kein Empathie-Füllsatz.
 Beispiel:
@@ -1385,19 +1411,33 @@ async function generateSalesTurn(
   const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
   const wantsToStart = /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead);
   if (wantsToStart && checkoutUrl) {
-    naturalReply = `Klar, hier kannst du direkt starten: ${checkoutUrl}`;
+    const checkoutCta = String(agent.checkout_cta_text || agent.checkoutCta || 'Hier kannst du direkt starten:').trim();
+    naturalReply = `${checkoutCta} ${checkoutUrl}`.trim();
     violation = '';
   }
 
   const priceText = String(agent.price_text || agent.price || '').trim();
   if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung)\b/i.test(latestLead) && priceText) {
-    naturalReply = `${priceText}. Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten als 119 € angezeigt werden. :)`;
+    const paymentPlan = String(agent.payment_plan_text || agent.paymentPlan || '').trim();
+    const paymentHint = String(agent.payment_hint || agent.paymentHint || '').trim();
+    const showHint = Boolean(agent.show_payment_hint_with_price ?? agent.showPaymentHintWithPrice);
+    naturalReply = [priceText, paymentPlan, showHint ? paymentHint : ''].filter(Boolean).join(' ');
     violation = '';
   }
 
-  if (violation && /\bklarna\b/i.test(latestLead) && /\bklarna\b/i.test(priceText)) {
-    naturalReply = 'Ja. Klarna kannst du im Checkout auswählen; welche Optionen dir angezeigt werden, entscheidet Klarna individuell.';
-    violation = '';
+  if (violation) {
+    const paymentMethods = String(agent.payment_methods || agent.paymentMethods || '').trim();
+    const paymentHint = String(agent.payment_hint || agent.paymentHint || '').trim();
+    const mentionedMethod = paymentMethods
+      .split(/[\n,;|]+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .find((method) => new RegExp(`\\b${method.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(latestLead));
+
+    if (mentionedMethod) {
+      naturalReply = [paymentMethods, paymentHint].filter(Boolean).join(' ');
+      violation = '';
+    }
   }
 
   if (!naturalReply) return null;
@@ -1872,11 +1912,24 @@ function naturalReplyViolation(
   }
 
   const genericPriceQuestion =
-    /\b(kostet|kosten|preis|wie viel|wieviel)\b/i.test(latestLead) &&
-    !/\b(klarna)\b/i.test(latestLead);
+    /\b(kostet|kosten|preis|wie viel|wieviel)\b/i.test(latestLead);
 
-  if (genericPriceQuestion && !/\bklarna\b/i.test(reply)) {
-    return 'Bei einer allgemeinen Preisfrage sollst du neben Einmalpreis und regulärer Ratenzahlung direkt auch Klarna erwähnen. Weise sicher darauf hin, dass Klarna je nach individueller Auswahl niedrigere Monatsraten als 119 € anbieten kann, ohne das zu garantieren.';
+  const configuredPaymentHint = String(
+    agent.payment_hint || agent.paymentHint || '',
+  ).trim();
+  const showPaymentHintWithPrice = Boolean(
+    agent.show_payment_hint_with_price ?? agent.showPaymentHintWithPrice,
+  );
+
+  if (
+    genericPriceQuestion &&
+    showPaymentHintWithPrice &&
+    configuredPaymentHint &&
+    !reply.toLowerCase().includes(
+      configuredPaymentHint.toLowerCase().slice(0, Math.min(24, configuredPaymentHint.length)),
+    )
+  ) {
+    return `Bei allgemeinen Preisfragen soll der konfigurierte Zahlungshinweis direkt mitgesendet werden: ${configuredPaymentHint}`;
   }
 
   const isPriceQuestion = /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)\b/i.test(latestLead);
@@ -2018,20 +2071,34 @@ async function generateDemoDraft(
   if (/\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead)) {
     const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
     if (checkoutUrl) {
-      naturalReply = `Klar, hier kannst du direkt starten: ${checkoutUrl}`;
+      const checkoutCta = String(agent.checkout_cta_text || agent.checkoutCta || 'Hier kannst du direkt starten:').trim();
+    naturalReply = `${checkoutCta} ${checkoutUrl}`.trim();
       violation = '';
     }
   }
 
   const priceText = String(agent.price_text || agent.price || '').trim();
   if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung)\b/i.test(latestLead) && priceText) {
-    naturalReply = `${priceText}. Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten als 119 € angezeigt werden. :)`;
+    const paymentPlan = String(agent.payment_plan_text || agent.paymentPlan || '').trim();
+    const paymentHint = String(agent.payment_hint || agent.paymentHint || '').trim();
+    const showHint = Boolean(agent.show_payment_hint_with_price ?? agent.showPaymentHintWithPrice);
+    naturalReply = [priceText, paymentPlan, showHint ? paymentHint : ''].filter(Boolean).join(' ');
     violation = '';
   }
 
-  if (violation && /\bklarna\b/i.test(latestLead) && /\bklarna\b/i.test(priceText)) {
-    naturalReply = 'Ja. Klarna kannst du im Checkout auswählen; welche Optionen dir angezeigt werden, entscheidet Klarna individuell.';
-    violation = '';
+  if (violation) {
+    const paymentMethods = String(agent.payment_methods || agent.paymentMethods || '').trim();
+    const paymentHint = String(agent.payment_hint || agent.paymentHint || '').trim();
+    const mentionedMethod = paymentMethods
+      .split(/[\n,;|]+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .find((method) => new RegExp(`\\b${method.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(latestLead));
+
+    if (mentionedMethod) {
+      naturalReply = [paymentMethods, paymentHint].filter(Boolean).join(' ');
+      violation = '';
+    }
   }
 
   turn.reply = sanitizeOutgoingAiText(naturalReply);
