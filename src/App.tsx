@@ -294,27 +294,115 @@ function PageHead({eyebrow,title,desc,action}:{eyebrow:string,title:string,desc:
   return <div className="page-head"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{desc}</p></div>{action}</div>
 }
 
+function dashboardGreeting(){
+  const hour=new Date().getHours();
+  if(hour<5)return 'Guten Abend';
+  if(hour<12)return 'Guten Morgen';
+  if(hour<18)return 'Guten Tag';
+  return 'Guten Abend';
+}
+
 function Dashboard({data,onOpenInbox,onConnect}:{data:Bootstrap,onOpenInbox:()=>void,onConnect:()=>void}){
+  const firstName=String(data.user?.name||'').trim().split(/\s+/)[0]||'';
+  const greeting=`${dashboardGreeting()}${firstName?`, ${firstName}`:''} 👋`;
+
+  const total=Number(data.metrics.conversationsTotal||0);
+  const painPoints=Number(data.metrics.painPointsKnown||0);
+  const qualified=Number(data.metrics.qualifiedLeads||0);
+  const hot=Number(data.metrics.hotLeads||0);
+  const checkouts=Number(data.metrics.checkoutSent||0);
+
   const cards = [
-    ['Konversationen heute', data.metrics.conversationsToday, '+18%', MessageCircle], ['Qualifizierte Leads', data.metrics.qualifiedLeads, '+12%', Target],
-    ['Hot Leads', data.metrics.hotLeads, '+3 heute', Zap], ['Checkouts gesendet', data.metrics.checkoutSent, '33% → Kauf', CircleDollarSign]
+    ['Konversationen', total, `${Number(data.metrics.conversationsToday||0)} heute`, MessageCircle],
+    ['Painpoints erkannt', painPoints, total?`${Math.round((painPoints/total)*100)}% der Gespräche`:'Noch keine Daten', BrainCircuit],
+    ['Qualifizierte Leads', qualified, total?`${Math.round((qualified/total)*100)}% der Gespräche`:'Noch keine Daten', Target],
+    ['Hot Leads', hot, total?`${Math.round((hot/total)*100)}% der Gespräche`:'Noch keine Daten', Zap],
   ] as const;
+
+  const funnel = [
+    ['Gespräche', total],
+    ['Painpoint erkannt', painPoints],
+    ['Qualifiziert', qualified],
+    ['Hot Leads', hot],
+    ['Checkout gesendet', checkouts],
+  ] as const;
+
+  const hotConversations=[...data.conversations]
+    .filter(c=>c.temperature==='hot')
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,3);
+
+  function pct(value:number){
+    return total>0?Math.min(100,Math.round((value/total)*100)):0;
+  }
+
   return <>
-    <PageHead eyebrow="ÜBERSICHT" title="Guten Morgen 👋" desc="Dein AI Sales Agent arbeitet. Hier siehst du, was gerade in deinen DMs passiert." action={<button className="primary" onClick={onOpenInbox}><MessageCircle size={17}/> Inbox öffnen</button>}/>
+    <PageHead
+      eyebrow="ÜBERSICHT"
+      title={greeting}
+      desc={data.instagram.connected
+        ? 'Hier siehst du die echten Daten aus deinem Workspace.'
+        : 'Dein Workspace ist bereit. Verbinde Instagram, damit hier echte DM-Daten einlaufen.'}
+      action={<button className="primary" onClick={onOpenInbox}><MessageCircle size={17}/> Inbox öffnen</button>}
+    />
+
     {!data.instagram.connected && <div className="connect-banner"><div className="connect-icon"><Instagram/></div><div><b>Instagram noch nicht verbunden</b><p>Verbinde deinen Business- oder Creator-Account, damit der Agent echte DMs empfangen kann.</p></div><button onClick={onConnect}>Jetzt verbinden <ChevronRight size={16}/></button></div>}
-    <section className="metrics">{cards.map(([label,value,note,Icon])=><div className="metric" key={label}><div className="metric-top"><div className="metric-icon"><Icon size={18}/></div><span className="trend">{note}</span></div><strong>{value}</strong><span>{label}</span></div>)}</section>
+
+    <section className="metrics">
+      {cards.map(([label,value,note,Icon])=><div className="metric" key={label}>
+        <div className="metric-top"><div className="metric-icon"><Icon size={18}/></div><span className="trend neutral">{note}</span></div>
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </div>)}
+    </section>
+
     <div className="dashboard-grid">
-      <section className="panel activity-panel"><div className="panel-head"><div><b>Live Sales Activity</b><span>Was dein Agent heute erkannt hat</span></div><span className="live"><i/> LIVE</span></div>
-        <div className="funnel">
-          {[['47','Gespräche','100%'],['31','Painpoint erkannt','66%'],['18','Qualifiziert','38%'],['9','Hot Leads','19%'],['6','Checkout','13%'],['2','Verkäufe','4%']].map((x,i)=><div key={x[1]} className="funnel-row"><div><span>{x[1]}</span><em>{x[2]}</em></div><div className="bar"><i style={{width:`${Math.max(12,100-i*16)}%`}}/></div><b>{x[0]}</b></div>)}
-        </div>
+      <section className="panel activity-panel">
+        <div className="panel-head"><div><b>Live Sales Activity</b><span>Nur echte Daten aus deinem Workspace</span></div><span className="live"><i/> LIVE</span></div>
+        {total>0
+          ? <div className="funnel">
+              {funnel.map(([label,value])=>{
+                const percent=pct(Number(value));
+                return <div key={label} className="funnel-row">
+                  <div><span>{label}</span><em>{percent}%</em></div>
+                  <div className="bar"><i style={{width:`${percent}%`}}/></div>
+                  <b>{value}</b>
+                </div>;
+              })}
+            </div>
+          : <div className="dashboard-empty">
+              <Activity size={24}/>
+              <b>Noch keine Sales-Aktivität</b>
+              <span>Sobald echte Instagram-DMs eingehen, baut sich dieser Funnel automatisch aus deinen Workspace-Daten auf.</span>
+            </div>
+        }
       </section>
-      <section className="panel"><div className="panel-head"><div><b>Hot Leads</b><span>Höchste Kaufwahrscheinlichkeit</span></div><button className="text-btn" onClick={onOpenInbox}>Alle ansehen</button></div>
-        <div className="hot-list">{data.conversations.slice(0,3).map(c=><button key={c.id} onClick={onOpenInbox}><div className="avatar">{c.avatar}</div><div className="hot-info"><b>{c.name}</b><span>{c.painPoint}</span></div><div className={`score ${c.score>75?'hot':'warm'}`}><b>{c.score}%</b><span>Score</span></div></button>)}</div>
+
+      <section className="panel">
+        <div className="panel-head"><div><b>Hot Leads</b><span>Höchste aktuelle Kaufwahrscheinlichkeit</span></div><button className="text-btn" onClick={onOpenInbox}>Alle ansehen</button></div>
+        {hotConversations.length
+          ? <div className="hot-list">{hotConversations.map(c=><button key={c.id} onClick={onOpenInbox}><div className="avatar">{c.avatar}</div><div className="hot-info"><b>{c.name}</b><span>{c.painPoint}</span></div><div className={`score ${c.score>75?'hot':'warm'}`}><b>{c.score}%</b><span>Score</span></div></button>)}</div>
+          : <div className="dashboard-empty compact">
+              <Target size={22}/>
+              <b>Noch keine Hot Leads</b>
+              <span>Leads erscheinen hier erst, wenn die AI sie anhand echter Gespräche als hot einstuft.</span>
+            </div>
+        }
       </section>
     </div>
-    <section className="panel agent-status"><div className="agent-orb"><Bot/></div><div><b>Sales Agent ist aktiv</b><p>Aktuelle Strategie: erst verstehen → Painpoint konkretisieren → qualifizieren → Lösung passend präsentieren → Einwand behandeln → CTA.</p></div><div className="status-chips"><span><ShieldCheck size={14}/> Guardrails aktiv</span><span><Activity size={14}/> Antwortzeit ~8s</span></div></section>
-  </>
+
+    <section className="panel agent-status">
+      <div className="agent-orb"><Bot/></div>
+      <div>
+        <b>{data.agent?.active===false?'Sales Agent ist pausiert':'Sales Agent ist aktiv'}</b>
+        <p>Strategie: verstehen → Painpoint konkretisieren → qualifizieren → passende Lösung erklären → Einwand behandeln → CTA.</p>
+      </div>
+      <div className="status-chips">
+        <span><ShieldCheck size={14}/> Guardrails aktiv</span>
+        <span><Activity size={14}/> Natürliche Antwortpausen</span>
+      </div>
+    </section>
+  </>;
 }
 
 function waitMs(ms:number){return new Promise<void>(resolve=>setTimeout(resolve,ms))}
