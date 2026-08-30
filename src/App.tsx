@@ -116,7 +116,7 @@ function AuthBrandPanel(){
       <p>Ein privater Workspace für AI-gestützte Instagram-Verkaufsgespräche, Lead Intelligence und deinen eigenen Sales Agent.</p>
       <div className="login-flow"><span><MessageCircle/> Nachricht</span><ChevronRight/><span><BrainCircuit/> Verstehen</span><ChevronRight/><span><Target/> Qualifizieren</span><ChevronRight/><span><CircleDollarSign/> Verkaufen</span></div>
     </div>
-    <small>Private Workspaces · sichere Server-Sessions · PayPal Billing</small>
+    <small>Instagram DMs · AI Sales Agent · Lead Intelligence</small>
   </div>;
 }
 
@@ -242,7 +242,6 @@ function Login({onAuthenticated}:{onAuthenticated:(value:any)=>void}) {
 
         {mode==='forgot'&&<button type="button" className="auth-back-link" onClick={()=>switchMode('login')}><ArrowLeft size={14}/> Zurück zur Anmeldung</button>}
 
-        <div className="auth-security"><ShieldCheck size={14}/><span>Passwörter werden gehasht gespeichert. Reset- und Bestätigungslinks sind einmalig und zeitlich begrenzt.</span></div>
       </form>
     </div>
   </div>;
@@ -318,7 +317,7 @@ function ResetPasswordPage({token}:{token:string}){
   if(done){
     return <AuthResultPage
       title="Passwort geändert"
-      message="Dein neues Passwort ist aktiv. Aus Sicherheitsgründen wurden bestehende Sitzungen beendet."
+      message="Dein neues Passwort ist aktiv. Du kannst dich jetzt wieder anmelden."
       success
       buttonLabel="Jetzt anmelden"
     />;
@@ -1523,7 +1522,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
 }
 function SettingsPage({user,organization,onLogout}:{user:any,organization:any,onLogout:()=>void}){
   return <>
-    <PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Kontoinformationen, Workspace und Sicherheit."/>
+    <PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Kontoinformationen und Workspace."/>
     <div className="panel account-settings">
       <div className="account-setting-row">
         <div><span>KONTO</span><b>{user.name}</b><small>{user.email}</small></div>
@@ -1532,10 +1531,6 @@ function SettingsPage({user,organization,onLogout}:{user:any,organization:any,on
       <div className="account-setting-row">
         <div><span>WORKSPACE</span><b>{organization.name}</b><small>Workspace-ID: {organization.id||'—'}</small></div>
         <span className="role-badge">{String(organization.plan||'starter').toUpperCase()}</span>
-      </div>
-      <div className="security-summary">
-        <ShieldCheck size={18}/>
-        <div><b>Sichere Anmeldung</b><span>Passwort-Hashing, HttpOnly/Secure Sessions und getrennte Workspace-Daten sind aktiv.</span></div>
       </div>
       <button className="secondary logout-button" onClick={onLogout}>Abmelden</button>
     </div>
