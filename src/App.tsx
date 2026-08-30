@@ -463,7 +463,20 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
       <div className="brand"><div className="brand-mark"><Sparkles size={18}/></div><div><strong>DM Sales AI</strong><span>AI Sales Agent</span></div></div>
       <button className="mobile-close" onClick={() => setMobileNav(false)}><X/></button>
-      <div className="workspace"><div className="workspace-icon">{workspaceInitial}</div><div><strong>{data.organization.name}</strong><span>{String(data.organization.plan||'starter').toUpperCase()} PLAN</span></div><ChevronRight size={16}/></div>
+      <button
+        type="button"
+        className={`workspace workspace-link ${view==='billing'?'active':''}`}
+        onClick={()=>{setView('billing');setMobileNav(false)}}
+        aria-label="Plan und Billing öffnen"
+        title="Plan & Billing öffnen"
+      >
+        <div className="workspace-icon">{workspaceInitial}</div>
+        <div className="workspace-copy">
+          <strong>{data.organization.name}</strong>
+          <span>{String(data.organization.plan||'starter').toUpperCase()} PLAN</span>
+        </div>
+        <ChevronRight className="workspace-arrow" size={16}/>
+      </button>
       <nav>{nav.map(([key,label,Icon]) => <button key={key} className={view === key ? 'active' : ''} onClick={() => {setView(key as View); setMobileNav(false)}}><Icon size={18}/><span>{label}</span>{key==='inbox' && data.conversations.length>0 && <em>{data.conversations.length}</em>}</button>)}</nav>
       <div className="sidebar-bottom">
         <div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>{Number(data.metrics.conversationsThisMonth||0)} / {String(data.organization.plan).toLowerCase()==='pro'?'5.000':'500'}</b></div><div className="usage-bar"><i style={{width:`${Math.min(100,(Number(data.metrics.conversationsThisMonth||0)/(String(data.organization.plan).toLowerCase()==='pro'?5000:500))*100)}%`}}/></div><small>{String(data.organization.plan||'starter').toUpperCase()} · {billingStatus==='cancelled'&&billingActive?`gekündigt · Zugang bis ${new Date(String(data.billing?.currentPeriodEnd)).toLocaleDateString('de-DE')}`:billingActive?'Abo aktiv':'Abo nicht aktiv'}</small></div>
