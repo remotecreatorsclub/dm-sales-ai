@@ -1889,9 +1889,9 @@ body{min-height:100dvh;overflow-x:hidden}
 
 .field-info-popover{
   position:absolute;
-  left:50%;
+  left:0;
   bottom:calc(100% + 10px);
-  transform:translateX(-50%) translateY(4px);
+  transform:translateY(4px);
   width:min(310px,78vw);
   padding:12px 13px;
   border-radius:11px;
@@ -1905,19 +1905,20 @@ body{min-height:100dvh;overflow-x:hidden}
   transition:opacity .14s ease,transform .14s ease,visibility .14s ease;
   z-index:100;
   white-space:normal;
+  max-width:min(310px,calc(100vw - 340px));
 }
 
 .field-info-popover:after{
   content:'';
   position:absolute;
-  left:50%;
+  left:8px;
   top:100%;
   width:9px;
   height:9px;
   background:#07111f;
   border-right:1px solid #26364b;
   border-bottom:1px solid #26364b;
-  transform:translate(-50%,-5px) rotate(45deg);
+  transform:translateY(-5px) rotate(45deg);
 }
 
 .field-info-wrap:hover .field-info-popover,
@@ -1925,7 +1926,7 @@ body{min-height:100dvh;overflow-x:hidden}
 .field-info-wrap:focus-visible .field-info-popover{
   opacity:1;
   visibility:visible;
-  transform:translateX(-50%) translateY(0);
+  transform:translateY(0);
 }
 
 .field-info-popover>b,
@@ -2020,6 +2021,7 @@ body{min-height:100dvh;overflow-x:hidden}
     right:14px;
     bottom:18px;
     width:auto;
+    max-width:none;
     transform:translateY(8px);
     z-index:200;
   }
