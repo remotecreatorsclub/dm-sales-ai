@@ -897,6 +897,10 @@ Schlecht: "Ja, das ist ein berechtigter Punkt. Im RCC ..."
 20. Wiederhole auch Formulierungen wie "Schritt für Schritt" nicht ständig. Variiere natürlich.
 21. Keine künstliche Euphorie. Ein normales "Okay", "Ja", "Genau" oder direkte Antwort wirkt menschlicher als Lob.
 22. Wenn der Lead sagt, dass er starten/kaufen will, antworte knapp und handlungsorientiert. Kein "Großartig!", kein "Wenn du bereit bist", kein erneuter Pitch.
+23. Nutze keine Bewertungsfloskeln wie "guter Ansatz", "super Startpunkt", "völlig okay", "kein Problem" oder "berechtigter Punkt". Reagiere auf den Inhalt statt die Aussage zu bewerten.
+24. Vermeide Gesprächsschleifen. Wenn du etwas bereits erklärt hast, frage nicht erneut, ob du es erklären sollst.
+25. Eine Nachricht darf auch einfach mit einer Aussage enden. Du musst das Gespräch nicht künstlich mit einer Frage offenhalten.
+26. Bei einem Einwand oder einer Sorge: erst konkret darauf eingehen. Kein pauschales Beruhigen.
 
 ${firstContact ? `ERSTKONTAKT:
 - Nicht pitchen.
@@ -1360,46 +1364,32 @@ async function generateSalesTurn(
   const turn = analysis || fallbackTurnFromLead(lead, 'ANALYSIS_ONLY');
   const analyzedLead = analyzedLeadFromTurn(turn);
 
-  let naturalReply = await runNaturalReply(
+  const validated = await generateValidatedNaturalReply(
     env,
     agent,
     analyzedLead,
     replyHistory,
-    firstContact,
-  );
-
-  let violation = naturalReplyViolation(
-    naturalReply,
-    agent,
     latestLead,
     firstContact,
-    analyzedLead,
-    replyHistory,
   );
-
-  if (violation) {
-    naturalReply = await runNaturalReply(
-      env,
-      agent,
-      analyzedLead,
-      replyHistory,
-      firstContact,
-      violation,
-    );
-    violation = naturalReplyViolation(
-      naturalReply,
-      agent,
-      latestLead,
-      firstContact,
-      analyzedLead,
-      replyHistory,
-    );
-  }
+  let naturalReply = validated.reply;
+  let violation = validated.violation;
 
   const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
   const wantsToStart = /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead);
-  if (violation && wantsToStart && checkoutUrl) {
+  if (wantsToStart && checkoutUrl) {
     naturalReply = `Klar, hier kannst du direkt starten: ${checkoutUrl}`;
+    violation = '';
+  }
+
+  const priceText = String(agent.price_text || agent.price || '').trim();
+  if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung)\b/i.test(latestLead) && priceText) {
+    naturalReply = `Der Preis ist ${priceText}`;
+    violation = '';
+  }
+
+  if (violation && /\bklarna\b/i.test(latestLead) && /\bklarna\b/i.test(priceText)) {
+    naturalReply = 'Ja. Klarna kannst du im Checkout auswählen; welche Optionen dir angezeigt werden, entscheidet Klarna individuell.';
     violation = '';
   }
 
@@ -1618,6 +1608,98 @@ function compactDigits(value: string) {
   return value.replace(/\D/g, '');
 }
 
+
+function cleanConversationReply(value: string, shouldAskQuestion = true) {
+  let reply = String(value || '').trim();
+  if (!reply) return '';
+
+  const cannedOpenings = [
+    /^(?:hey[,! ]*)?das ist (?:völlig )?okay[.!]\s*/i,
+    /^(?:hey[,! ]*)?das ist (?:ein )?super startpunkt[.!]\s*/i,
+    /^(?:hey[,! ]*)?das ist (?:ein )?großartiger startpunkt[.!]\s*/i,
+    /^(?:hey[,! ]*)?das ist ein guter ansatz[.!]\s*/i,
+    /^(?:hey[,! ]*)?das ist ein berechtigter punkt[.!]\s*/i,
+    /^(?:hey[,! ]*)?das ist ein großes problem[.!]\s*/i,
+    /^(?:hey[,! ]*)?das ist kein problem[.!]\s*/i,
+    /^(?:hey[,! ]*)?kein problem[.!]\s*/i,
+    /^(?:hey[,! ]*)?(?:großartig|perfekt|super)[.!]\s*/i,
+    /^(?:hey[,! ]*)?vielen dank[^.!?]*[.!]\s*/i,
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of cannedOpenings) {
+      const next = reply.replace(pattern, '').trim();
+      if (next !== reply) {
+        reply = next;
+        changed = true;
+      }
+    }
+  }
+
+  reply = reply
+    .replace(/^Ich denke, wir sollten erstmal schauen,/i, 'Dann schauen wir erstmal,')
+    .replace(/^Ich denke, wir sollten erstmal /i, 'Dann ')
+    .replace(/^Affiliate-Marketing kann tatsächlich /i, 'Affiliate-Marketing kann ')
+    .replace(/\bDas könnte für dich eine bessere Option sein\.?$/i, '')
+    .trim();
+
+  if (!shouldAskQuestion) {
+    const parts = reply.match(/[^.!?]+[.!?]?/g)?.map((x) => x.trim()).filter(Boolean) || [];
+    if (parts.length > 1 && /\?$/.test(parts[parts.length - 1])) {
+      reply = parts.slice(0, -1).join(' ').trim();
+    }
+  }
+
+  const sentences = reply.match(/[^.!?]+[.!?]?/g)?.map((x) => x.trim()).filter(Boolean) || [];
+  if (sentences.length > 2) reply = sentences.slice(0, 2).join(' ').trim();
+
+  return reply;
+}
+
+async function generateValidatedNaturalReply(
+  env: Env,
+  agent: D1Row,
+  lead: D1Row,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  latestLead: string,
+  firstContact: boolean,
+) {
+  let retryNote = '';
+  let lastReply = '';
+  let lastViolation = '';
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const raw = await runNaturalReply(env, agent, lead, history, firstContact, retryNote);
+    const reply = cleanConversationReply(raw, lead.should_ask_question !== false);
+
+    if (!reply) {
+      retryNote = 'Die vorige Antwort war leer. Schreibe kurz und konkret auf die letzte Lead-Nachricht.';
+      continue;
+    }
+
+    const violation = naturalReplyViolation(
+      reply, agent, latestLead, firstContact, lead, history,
+    );
+
+    lastReply = reply;
+    lastViolation = violation;
+
+    if (!violation) return { reply, violation: '' };
+
+    retryNote =
+      `${violation}\nKeine Standardfloskel als Ersatz verwenden. Direkt, knapp und wie eine echte Instagram-DM formulieren.`;
+  }
+
+  const finalReply = cleanConversationReply(lastReply, lead.should_ask_question !== false);
+  const finalViolation = finalReply
+    ? naturalReplyViolation(finalReply, agent, latestLead, firstContact, lead, history)
+    : lastViolation || 'Keine valide Antwort erzeugt.';
+
+  return { reply: finalReply, violation: finalViolation };
+}
+
 function naturalReplyViolation(
   reply: string,
   agent: D1Row,
@@ -1642,6 +1724,9 @@ function naturalReplyViolation(
     'das ist völlig okay',
     'das ist ein berechtigter punkt',
     'berechtigter punkt',
+    'das ist ein guter ansatz',
+    'guter ansatz',
+    'das ist kein problem',
     'das ist großartig',
     'das ist ein großes problem',
     'großartiger startpunkt',
@@ -1830,26 +1915,16 @@ async function generateDemoDraft(
   const analyzedLead = analyzedLeadFromTurn(turn);
   const latestLead = lastLeadText(history) || String(body.message || '').trim();
 
-  let naturalReply = await runNaturalReply(
+  const validated = await generateValidatedNaturalReply(
     env,
     agent,
     analyzedLead,
     replyHistory,
+    latestLead,
     firstContact,
   );
-
-  let violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact, analyzedLead, replyHistory);
-  if (violation) {
-    naturalReply = await runNaturalReply(
-      env,
-      agent,
-      analyzedLead,
-      replyHistory,
-      firstContact,
-      violation,
-    );
-    violation = naturalReplyViolation(naturalReply, agent, latestLead, firstContact, analyzedLead, replyHistory);
-  }
+  let naturalReply = validated.reply;
+  let violation = validated.violation;
 
   if (!naturalReply) {
     const offerName = String(agent.offer_name || agent.offerName || '').trim();
@@ -1864,8 +1939,8 @@ async function generateDemoDraft(
     }
   }
 
-  // Bei klarer Startabsicht niemals weiterqualifizieren: direkt zum hinterlegten Checkout.
-  if (violation && /\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead)) {
+  // Klare Absichten bekommen deterministische, kurze Antworten.
+  if (/\b(ich .*starten|würde .*starten|will .*starten|möchte .*starten|kaufen|bestellen|checkout|link zum starten|wo kann ich starten|wie kann ich starten)\b/i.test(latestLead)) {
     const checkoutUrl = String(agent.checkout_url || agent.checkoutUrl || '').trim();
     if (checkoutUrl) {
       naturalReply = `Klar, hier kannst du direkt starten: ${checkoutUrl}`;
@@ -1873,11 +1948,15 @@ async function generateDemoDraft(
     }
   }
 
-  // Letzter defensiver Fallback bei einer direkten Preisfrage:
-  // Lieber eine kurze, korrekte Antwort als erfundene oder ausweichende Preisinformation.
-  if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)\b/i.test(latestLead)) {
-    const priceText = String(agent.price_text || agent.price || '').trim();
-    if (priceText) naturalReply = `Aktuell: ${priceText}`;
+  const priceText = String(agent.price_text || agent.price || '').trim();
+  if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung)\b/i.test(latestLead) && priceText) {
+    naturalReply = `Der Preis ist ${priceText}`;
+    violation = '';
+  }
+
+  if (violation && /\bklarna\b/i.test(latestLead) && /\bklarna\b/i.test(priceText)) {
+    naturalReply = 'Ja. Klarna kannst du im Checkout auswählen; welche Optionen dir angezeigt werden, entscheidet Klarna individuell.';
+    violation = '';
   }
 
   turn.reply = naturalReply;
