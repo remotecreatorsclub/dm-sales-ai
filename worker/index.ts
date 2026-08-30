@@ -888,7 +888,10 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 13. Keine erfundenen Fakten, Garantien, falsche Knappheit oder Druck.
 14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
 15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
-15a. Bei einer allgemeinen Preisfrage wie "Was kostet das?" nenne nur Einmalpreis und reguläre Ratenzahlung. Klarna erst erwähnen, wenn der Lead nach Klarna fragt oder die Zahlungssituation ausdrücklich weiter vertieft wird.
+15a. Bei einer allgemeinen Preisfrage wie "Was kostet das?" nenne Einmalpreis, reguläre Ratenzahlung UND direkt den Klarna-Hinweis.
+Formuliere sinngemäß:
+"1.197 € einmalig oder 12 × 119 €. Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten als 119 € angezeigt werden. :)"
+WICHTIG: Niemals garantieren, dass Klarna tatsächlich unter 119 € pro Monat liegt. Es ist nur eine mögliche, individuell von Klarna angebotene Option.
 16. Bei konkreten Produktfragen wie "Wie verdient man damit?", "Was ist enthalten?" oder "Welche Wege gibt es?" hat die sachlich korrekte Antwort aus der Knowledge Base Vorrang vor einer weiteren Qualifizierungsfrage.
 16a. Bei einer sachlichen Informationsfrage beginne DIREKT mit der Antwort. Kein vorgeschaltetes Lob, keine Validierung und kein Empathie-Füllsatz.
 Beispiel:
@@ -1388,7 +1391,7 @@ async function generateSalesTurn(
 
   const priceText = String(agent.price_text || agent.price || '').trim();
   if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung)\b/i.test(latestLead) && priceText) {
-    naturalReply = `Der Preis ist ${priceText}`;
+    naturalReply = `${priceText}. Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten als 119 € angezeigt werden. :)`;
     violation = '';
   }
 
@@ -1870,10 +1873,10 @@ function naturalReplyViolation(
 
   const genericPriceQuestion =
     /\b(kostet|kosten|preis|wie viel|wieviel)\b/i.test(latestLead) &&
-    !/\b(klarna|rate|raten|ratenzahlung)\b/i.test(latestLead);
+    !/\b(klarna)\b/i.test(latestLead);
 
-  if (genericPriceQuestion && /\bklarna\b/i.test(reply)) {
-    return 'Der Lead hat nur nach dem Preis gefragt. Nenne Einmalpreis und reguläre Ratenzahlung; Klarna erst auf Nachfrage erwähnen.';
+  if (genericPriceQuestion && !/\bklarna\b/i.test(reply)) {
+    return 'Bei einer allgemeinen Preisfrage sollst du neben Einmalpreis und regulärer Ratenzahlung direkt auch Klarna erwähnen. Weise sicher darauf hin, dass Klarna je nach individueller Auswahl niedrigere Monatsraten als 119 € anbieten kann, ohne das zu garantieren.';
   }
 
   const isPriceQuestion = /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)\b/i.test(latestLead);
@@ -2022,7 +2025,7 @@ async function generateDemoDraft(
 
   const priceText = String(agent.price_text || agent.price || '').trim();
   if (violation && /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung)\b/i.test(latestLead) && priceText) {
-    naturalReply = `Der Preis ist ${priceText}`;
+    naturalReply = `${priceText}. Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten als 119 € angezeigt werden. :)`;
     violation = '';
   }
 
