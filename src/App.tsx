@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowLeft, Bot, BrainCircuit, Check, ChevronRight, CircleDollarSign, Clock3, Camera as Instagram,
-  LayoutDashboard, ListFilter, MessageCircle, Pause, Play, PlugZap, Search, Send, Settings,
-  Sparkles, Target, Users, Workflow, Zap, ShieldCheck, BarChart3, CreditCard, Menu, X, Info
+  LayoutDashboard, MessageCircle, Pause, Play, PlugZap, Search, Send, Settings,
+  Sparkles, Target, Users, Zap, ShieldCheck, BarChart3, CreditCard, Menu, X, Info
 } from 'lucide-react';
 
 type Message = { id: string; from: 'lead' | 'ai' | 'human'; body: string; time: string };
@@ -31,7 +31,7 @@ type Conversation = {
 type Bootstrap = {
   user?: { id?: string; name: string; email: string; role: string; emailVerified?: boolean };
   organization: { id?: string; name: string; plan: string };
-  instagram: { connected: boolean; username: string; status: string };
+  instagram: { connected: boolean; username: string; status: string; ready?: boolean };
   billing?: {
     provider?: string;
     plan?: string;
@@ -55,11 +55,11 @@ type Bootstrap = {
   agent: Record<string, any>;
 };
 
-type View = 'dashboard' | 'inbox' | 'test' | 'leads' | 'automations' | 'agent' | 'analytics' | 'integrations' | 'billing' | 'settings';
+type View = 'dashboard' | 'inbox' | 'test' | 'leads' | 'agent' | 'analytics' | 'integrations' | 'billing' | 'settings';
 
 const nav = [
   ['dashboard', 'Dashboard', LayoutDashboard], ['inbox', 'Inbox', MessageCircle], ['test', 'Test-Chat', Bot], ['leads', 'Leads', Users],
-  ['automations', 'Automationen', Workflow], ['agent', 'AI Agent', BrainCircuit], ['analytics', 'Analytics', BarChart3],
+  ['agent', 'AI Agent', BrainCircuit], ['analytics', 'Analytics', BarChart3],
   ['integrations', 'Integrationen', PlugZap], ['billing', 'Billing', CreditCard], ['settings', 'Einstellungen', Settings],
 ] as const;
 
@@ -113,7 +113,7 @@ function AuthBrandPanel(){
     <div className="login-copy">
       <span className="eyebrow light">AI SALES AGENT</span>
       <h1>Aus DMs werden<br/><em>Verkaufsgespräche.</em></h1>
-      <p>Jeder Account besitzt einen eigenen Workspace, einen eigenen AI Agent, eigene Leads und ein eigenes PayPal-Abo.</p>
+      <p>Ein privater Workspace für AI-gestützte Instagram-Verkaufsgespräche, Lead Intelligence und deinen eigenen Sales Agent.</p>
       <div className="login-flow"><span><MessageCircle/> Nachricht</span><ChevronRight/><span><BrainCircuit/> Verstehen</span><ChevronRight/><span><Target/> Qualifizieren</span><ChevronRight/><span><CircleDollarSign/> Verkaufen</span></div>
     </div>
     <small>Private Workspaces · sichere Server-Sessions · PayPal Billing</small>
@@ -458,7 +458,7 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
       <div className="workspace"><div className="workspace-icon">{workspaceInitial}</div><div><strong>{data.organization.name}</strong><span>{String(data.organization.plan||'starter').toUpperCase()} PLAN</span></div><ChevronRight size={16}/></div>
       <nav>{nav.map(([key,label,Icon]) => <button key={key} className={view === key ? 'active' : ''} onClick={() => {setView(key as View); setMobileNav(false)}}><Icon size={18}/><span>{label}</span>{key==='inbox' && data.conversations.length>0 && <em>{data.conversations.length}</em>}</button>)}</nav>
       <div className="sidebar-bottom">
-        <div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>{data.conversations.length} / {String(data.organization.plan).toLowerCase()==='pro'?'5.000':'500'}</b></div><div className="usage-bar"><i style={{width:`${Math.min(100,(data.conversations.length/(String(data.organization.plan).toLowerCase()==='pro'?5000:500))*100)}%`}}/></div><small>{String(data.organization.plan||'starter').toUpperCase()} · {billingActive?'Abo aktiv':'Abo nicht aktiv'}</small></div>
+        <div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>{Number(data.metrics.conversationsThisMonth||0)} / {String(data.organization.plan).toLowerCase()==='pro'?'5.000':'500'}</b></div><div className="usage-bar"><i style={{width:`${Math.min(100,(Number(data.metrics.conversationsThisMonth||0)/(String(data.organization.plan).toLowerCase()==='pro'?5000:500))*100)}%`}}/></div><small>{String(data.organization.plan||'starter').toUpperCase()} · {billingActive?'Abo aktiv':'Abo nicht aktiv'}</small></div>
         <div className="user"><div className="avatar dark">{initials}</div><div><strong>{user.name||'Account Owner'}</strong><span>{user.email}</span></div><button className="logout-mini" onClick={logout} title="Abmelden">↗</button></div>
       </div>
     </aside>
@@ -472,7 +472,6 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
           : <EmptyInbox/>)} 
         {view === 'test' && <TestChat agent={data.agent}/>} 
         {view === 'leads' && <Leads conversations={data.conversations} onOpen={(id)=>{setSelectedId(id);setView('inbox')}}/>}
-        {view === 'automations' && <Automations/>}
         {view === 'agent' && <Agent initial={data.agent}/>} 
         {view === 'analytics' && <Analytics data={data}/>} 
         {view === 'integrations' && <Integrations instagram={data.instagram}/>} 
@@ -625,8 +624,16 @@ function Inbox({conversations,selected,setSelected,updateConversation}:{conversa
   const [input,setInput]=useState('');
   const [drafting,setDrafting]=useState(false);
   const [mobileChatOpen,setMobileChatOpen]=useState(false);
+  const [search,setSearch]=useState('');
   const messagesRef=useRef<HTMLDivElement|null>(null);
-  const messages = selected.messages.length ? selected.messages : [{id:'empty',from:'ai' as const,body:'Demo-Konversation: Nachrichtenverlauf wird hier angezeigt.',time:''}];
+  const messages = selected.messages;
+  const normalizedSearch=search.trim().toLowerCase();
+  const visibleConversations=normalizedSearch
+    ? conversations.filter(c =>
+        [c.name,c.username,c.lastMessage,c.painPoint]
+          .some(value=>String(value||'').toLowerCase().includes(normalizedSearch))
+      )
+    : conversations;
   useEffect(()=>{const el=messagesRef.current;if(!el)return;requestAnimationFrame(()=>{el.scrollTop=el.scrollHeight})},[selected.id,selected.messages.length,drafting]);
   async function toggleAI(){const mode=selected.aiMode==='active'?'paused':'active'; await fetch(`/api/conversations/${selected.id}/ai-mode`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}); updateConversation({...selected,aiMode:mode});}
   async function send(){if(!input.trim())return; const body=input.trim(); setInput(''); const r=await fetch(`/api/conversations/${selected.id}/reply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:body})}); const j:any=await r.json(); if(!r.ok){setInput(body);return;} updateConversation({...selected,aiMode:'paused',messages:[...selected.messages,{id:j.id||crypto.randomUUID(),from:'human',body,time:'jetzt'}],lastMessage:body});}
@@ -710,13 +717,26 @@ function Inbox({conversations,selected,setSelected,updateConversation}:{conversa
     }
   }
   return <div className={`inbox-wrap ${mobileChatOpen ? 'mobile-chat-open' : 'mobile-list-open'}`}>
-    <section className="conversation-list"><div className="inbox-title"><div><span className="eyebrow">INBOX</span><h2>Konversationen</h2></div><button className="filter"><ListFilter size={17}/></button></div><div className="search"><Search size={16}/><input placeholder="Name oder @username suchen"/></div><div className="tabs"><button className="active">Offen <span>3</span></button><button>Hot</button><button>Übernommen</button></div><div className="conv-items">{conversations.map(c=><button className={selected.id===c.id?'selected':''} key={c.id} onClick={()=>{setSelected(c.id);setMobileChatOpen(true)}}><div className="avatar">{c.avatar}<i className={c.aiMode==='active'?'online':'paused'}/></div><div className="conv-copy"><div><b>{c.name}</b><time>{c.time}</time></div><span>{c.lastMessage}</span><div className="conv-meta"><em className={`temp ${c.temperature}`}>{c.temperature==='hot'?'🔥 HOT':c.temperature==='warm'?'WARM':'COLD'}</em><em>{stageLabel[c.stage]}</em></div></div></button>)}</div></section>
+    <section className="conversation-list">
+      <div className="inbox-title"><div><span className="eyebrow">INBOX</span><h2>Konversationen</h2></div><span className="conversation-count">{conversations.length}</span></div>
+      <div className="search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Name, @username oder Inhalt suchen"/></div>
+      <div className="conv-items">
+        {visibleConversations.length
+          ? visibleConversations.map(c=><button className={selected.id===c.id?'selected':''} key={c.id} onClick={()=>{setSelected(c.id);setMobileChatOpen(true)}}><div className="avatar">{c.avatar}<i className={c.aiMode==='active'?'online':'paused'}/></div><div className="conv-copy"><div><b>{c.name}</b><time>{c.time}</time></div><span>{c.lastMessage}</span><div className="conv-meta"><em className={`temp ${c.temperature}`}>{c.temperature==='hot'?'🔥 HOT':c.temperature==='warm'?'WARM':'COLD'}</em><em>{stageLabel[c.stage]||c.stage}</em></div></div></button>)
+          : <div className="list-empty"><Search size={18}/><b>Keine Treffer</b><span>Versuche einen anderen Suchbegriff.</span></div>}
+      </div>
+    </section>
     <section className="chat"><div className="chat-head"><button className="mobile-chat-back" onClick={()=>setMobileChatOpen(false)} aria-label="Zurück zu Konversationen"><ArrowLeft size={20}/></button><div className="avatar">{selected.avatar}</div><div><b>{selected.name}</b><span>{selected.username} · <i className={selected.aiMode==='active'?'green-dot':''}/> AI {selected.aiMode==='active'?'aktiv':'pausiert'}</span></div><div className="chat-actions"><button className={selected.aiMode==='active'?'pause':'play'} onClick={toggleAI}>{selected.aiMode==='active'?<Pause size={15}/>:<Play size={15}/>}<span>{selected.aiMode==='active'?'AI pausieren':'AI übernehmen lassen'}</span></button></div></div>
       <div className="stage-line"><span>Sales Stage</span><div>{['discovery','painpoint','goal','qualification','solution','objection','close'].map(s=><i key={s} className={s===selected.stage?'current':stageRank(s)<stageRank(selected.stage)?'done':''}>{s===selected.stage?<Zap size={11}/>:null}{stageLabel[s]}</i>)}</div></div>
-      <div className="messages" ref={messagesRef}>{messages.map(m=><div key={m.id} className={`message-row ${m.from}`}><div className="bubble"><span className="speaker">{m.from==='lead'?selected.name:m.from==='ai'?'AI Agent':'Du'}</span>{m.body}{' '}<time>{m.time}</time></div></div>)}{drafting&&<div className="message-row ai typing-row"><div className="bubble typing-bubble"><span className="speaker">AI Agent</span><div className="typing-line"><span>Schreibt</span><span className="typing-dots"><i/><i/><i/></span></div></div></div>}</div>
+      <div className="messages" ref={messagesRef}>
+        {messages.length
+          ? messages.map(m=><div key={m.id} className={`message-row ${m.from}`}><div className="bubble"><span className="speaker">{m.from==='lead'?selected.name:m.from==='ai'?'AI Agent':'Du'}</span>{m.body}{' '}<time>{m.time}</time></div></div>)
+          : <div className="chat-empty"><MessageCircle size={22}/><b>Noch keine Nachrichten</b><span>Sobald Nachrichten in dieser Unterhaltung gespeichert sind, erscheinen sie hier.</span></div>}
+        {drafting&&<div className="message-row ai typing-row"><div className="bubble typing-bubble"><span className="speaker">AI Agent</span><div className="typing-line"><span>Schreibt</span><span className="typing-dots"><i/><i/><i/></span></div></div></div>}
+      </div>
       <div className="composer"><button className="ai-draft" onClick={draft} disabled={drafting}><Sparkles size={16}/>{drafting?'Antwort wird vorbereitet…':'AI Vorschlag'}</button><div className="compose-row"><textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Nachricht schreiben…" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}/><button onClick={send}><Send size={18}/></button></div><small>Wenn du selbst antwortest, empfehlen wir den AI Agent für diese Unterhaltung zu pausieren.</small></div>
     </section>
-    <aside className="lead-card"><div className="lead-head"><span className="eyebrow">LEAD INTELLIGENCE</span><div className="score-ring"><strong>{selected.score}%</strong><span>Kaufsignal</span></div><h3>{selected.name}</h3><p>{selected.username}</p></div><div className="lead-section"><label>Aktueller Stage</label><span className="stage-pill"><Zap size={13}/>{stageLabel[selected.stage]}</span></div>{[['Ziel',selected.goal,Target],['Painpoint',selected.painPoint,BrainCircuit],['Erfahrung',selected.experience,Activity],['Budget',selected.budget,CircleDollarSign],['Einwand',selected.objection,ShieldCheck]].map(([l,v,I]:any)=><div className="intel" key={l}><I size={16}/><div><label>{l}</label><p>{v}</p></div></div>)}<div className="intel"><MessageCircle size={16}/><div><label>Sprachstil</label><p>{[selected.styleProfile?.language, selected.styleProfile?.address, selected.styleProfile?.formality, selected.styleProfile?.emojiUsage].filter(Boolean).join(' · ') || 'Wird aus den Lead-Nachrichten erkannt'}</p></div></div><div className="lead-note"><Sparkles size={15}/><p><b>Nächster sinnvoller Schritt:</b> {selected.nextStep || 'Weiter natürlich qualifizieren und nichts erneut fragen, was bereits geklärt wurde.'}</p></div></aside>
+    <aside className="lead-card"><div className="lead-head"><span className="eyebrow">LEAD INTELLIGENCE</span><div className="score-ring" style={{background:`conic-gradient(#6d5dfc 0 ${Math.max(0,Math.min(100,selected.score))}%,#edf0f4 ${Math.max(0,Math.min(100,selected.score))}% 100%)`}}><strong>{selected.score}%</strong><span>Kaufsignal</span></div><h3>{selected.name}</h3><p>{selected.username}</p></div><div className="lead-section"><label>Aktueller Stage</label><span className="stage-pill"><Zap size={13}/>{stageLabel[selected.stage]}</span></div>{[['Ziel',selected.goal,Target],['Painpoint',selected.painPoint,BrainCircuit],['Erfahrung',selected.experience,Activity],['Budget',selected.budget,CircleDollarSign],['Einwand',selected.objection,ShieldCheck]].map(([l,v,I]:any)=><div className="intel" key={l}><I size={16}/><div><label>{l}</label><p>{v}</p></div></div>)}<div className="intel"><MessageCircle size={16}/><div><label>Sprachstil</label><p>{[selected.styleProfile?.language, selected.styleProfile?.address, selected.styleProfile?.formality, selected.styleProfile?.emojiUsage].filter(Boolean).join(' · ') || 'Wird aus den Lead-Nachrichten erkannt'}</p></div></div><div className="lead-note"><Sparkles size={15}/><p><b>Nächster sinnvoller Schritt:</b> {selected.nextStep || 'Weiter natürlich qualifizieren und nichts erneut fragen, was bereits geklärt wurde.'}</p></div></aside>
   </div>
 }
 function stageRank(s:string){return ['discovery','painpoint','goal','qualification','solution','objection','close'].indexOf(s)}
@@ -958,10 +978,13 @@ function TestChat({agent}:{agent:Record<string,any>}){
 }
 
 function Leads({conversations,onOpen}:{conversations:Conversation[],onOpen:(id:string)=>void}){
- return <><PageHead eyebrow="CRM" title="Leads" desc="Jeder Kontakt wird automatisch qualifiziert, zusammengefasst und nach Kaufsignal priorisiert." action={<button className="secondary"><ListFilter size={17}/> Filter</button>}/><div className="panel table-panel"><table><thead><tr><th>Lead</th><th>Stage</th><th>Painpoint</th><th>Score</th><th>AI</th><th/></tr></thead><tbody>{conversations.map(c=><tr key={c.id}><td><div className="person"><div className="avatar">{c.avatar}</div><div><b>{c.name}</b><span>{c.username}</span></div></div></td><td><span className="stage-pill">{stageLabel[c.stage]}</span></td><td>{c.painPoint}</td><td><div className="score-cell"><div className="mini-score"><i style={{width:`${c.score}%`}}/></div><b>{c.score}%</b></div></td><td><span className={`ai-state ${c.aiMode}`}>{c.aiMode==='active'?'Aktiv':'Pausiert'}</span></td><td><button className="text-btn" onClick={()=>onOpen(c.id)}>Öffnen →</button></td></tr>)}</tbody></table></div></>
+ return <>
+   <PageHead eyebrow="CRM" title="Leads" desc="Kontakte werden aus echten Gesprächen qualifiziert, zusammengefasst und nach Kaufsignal priorisiert."/>
+   {conversations.length
+     ? <div className="panel table-panel"><table><thead><tr><th>Lead</th><th>Stage</th><th>Painpoint</th><th>Score</th><th>AI</th><th/></tr></thead><tbody>{conversations.map(c=><tr key={c.id}><td><div className="person"><div className="avatar">{c.avatar}</div><div><b>{c.name}</b><span>{c.username}</span></div></div></td><td><span className="stage-pill">{stageLabel[c.stage]||c.stage}</span></td><td>{c.painPoint}</td><td><div className="score-cell"><div className="mini-score"><i style={{width:`${Math.max(0,Math.min(100,c.score))}%`}}/></div><b>{c.score}%</b></div></td><td><span className={`ai-state ${c.aiMode}`}>{c.aiMode==='active'?'Aktiv':'Pausiert'}</span></td><td><button className="text-btn" onClick={()=>onOpen(c.id)}>Öffnen →</button></td></tr>)}</tbody></table></div>
+     : <div className="panel empty-workspace"><Users/><h3>Noch keine Leads</h3><p>Sobald echte Instagram-Gespräche eingehen, erscheinen qualifizierte Kontakte hier automatisch.</p></div>}
+ </>
 }
-
-function Automations(){const items=[['Kommentar → DM','Wenn jemand ein Keyword kommentiert, startet automatisch eine private Unterhaltung.','Coming next'],['DM Keyword','START, PREIS oder INFO startet einen definierten AI Sales Flow.','Coming next'],['Story Reply','Antworten auf Stories werden erkannt und intelligent weitergeführt.','Planned']];return <><PageHead eyebrow="AUTOMATION" title="Trigger & Flows" desc="Die KI übernimmt das Gespräch – Automationen entscheiden, wann es startet." action={<button className="primary"><Zap size={17}/> Automation erstellen</button>}/><div className="automation-grid">{items.map(([t,d,s],i)=><div className="automation-card" key={t}><div className="automation-icon">{i===0?<MessageCircle/>:i===1?<Zap/>:<Instagram/>}</div><span className="coming">{s}</span><h3>{t}</h3><p>{d}</p><div className="flow-preview"><span>Trigger</span><ChevronRight/><span>Private DM</span><ChevronRight/><span className="ai-node"><Sparkles/> AI Agent</span></div><button className="secondary" disabled>Konfigurieren</button></div>)}</div></>}
 
 const agentFieldHelp = {
   offerName: {
@@ -1030,11 +1053,11 @@ const agentFieldHelp = {
   },
   checkoutUrl: {
     info: 'Der direkte Link zum Checkout deines Angebots. Bei klarer Kaufabsicht kann der Agent diesen Link senden.',
-    example: 'https://www.checkout-anbieter.de/dein-produkt',
+    example: 'https://deine-domain.de/checkout',
   },
   bookingUrl: {
     info: 'Optionaler Link zu einem Gespräch oder Termin. Leer lassen, wenn dein Funnel keinen Termin benötigt.',
-    example: 'https://calendly.com/deinname/strategiegespraech',
+    example: 'https://deine-domain.de/termin',
   },
 } as const;
 
@@ -1133,10 +1156,85 @@ function Area({label,value,onChange,wide,help}:{label:string,value:string,onChan
  </div>
 }
 
-function Analytics({data}:{data:Bootstrap}){return <><PageHead eyebrow="PERFORMANCE" title="Analytics" desc="Nicht nur Nachrichten zählen – sondern verstehen, wo Gespräche zu Käufen werden."/><section className="metrics">{[['Conversion Rate','4,3%'],['Ø Lead Score','63%'],['Antwortzeit','8 Sek.'],['AI Takeover','91%']].map(([a,b])=><div className="metric" key={a}><strong>{b}</strong><span>{a}</span></div>)}</section><div className="panel chart-panel"><div className="panel-head"><div><b>Sales Funnel</b><span>Demo-Daten · letzte 30 Tage</span></div></div><div className="big-bars">{[['Neue Gespräche',428,100],['Painpoint erkannt',286,67],['Qualifiziert',166,39],['Hot Lead',81,19],['Checkout',54,13],['Verkauf',18,4]].map(([l,n,w]:any)=><div key={l}><span>{l}</span><div><i style={{width:`${w}%`}}/></div><b>{n}</b></div>)}</div></div></>}
+function Analytics({data}:{data:Bootstrap}){
+  const total=Number(data.metrics.conversationsTotal||0);
+  const pain=Number(data.metrics.painPointsKnown||0);
+  const qualified=Number(data.metrics.qualifiedLeads||0);
+  const hot=Number(data.metrics.hotLeads||0);
+  const checkout=Number(data.metrics.checkoutSent||0);
+  const avgScore=data.conversations.length
+    ? Math.round(data.conversations.reduce((sum,c)=>sum+Number(c.score||0),0)/data.conversations.length)
+    : 0;
+  const aiActive=data.conversations.length
+    ? Math.round((data.conversations.filter(c=>c.aiMode==='active').length/data.conversations.length)*100)
+    : 0;
+  const funnel=[
+    ['Gespräche',total],
+    ['Painpoint erkannt',pain],
+    ['Qualifiziert',qualified],
+    ['Hot Lead',hot],
+    ['Checkout gesendet',checkout],
+  ] as const;
+  const pct=(value:number)=>total?Math.min(100,Math.round((value/total)*100)):0;
 
-function Integrations({instagram}:{instagram:Bootstrap['instagram']}){const [msg,setMsg]=useState('');async function connect(){const r=await fetch('/api/meta/oauth/start',{method:'POST'});const j:any=await r.json();if(j.url){window.location.href=j.url;return;}setMsg(j.error||'Verbindung konnte nicht gestartet werden.')}return <><PageHead eyebrow="INTEGRATIONEN" title="Kanäle verbinden" desc="Hier verbinden deine Kunden später ihre eigenen Accounts."/><div className="integration-card"><div className="instagram-logo"><Instagram/></div><div className="integration-info"><div><h3>Instagram</h3><span className="official">META API</span></div><p>Business- oder Creator-Account verbinden, DMs per Webhook empfangen und Antworten über die offizielle API senden.</p><div className="feature-chips"><span><Check/> DMs</span><span><Check/> Webhooks</span><span><Check/> Kommentar → DM vorbereitet</span></div></div><div className="integration-action"><span className={instagram.connected?'connected':'disconnected'}>{instagram.connected?'Verbunden':'Nicht verbunden'}</span><button className="primary" onClick={connect}><Instagram size={17}/> Instagram verbinden</button></div></div>{msg&&<div className="notice"><ShieldCheck/><div><b>Integration vorbereitet</b><p>{msg}</p></div></div>}<div className="panel setup-steps"><div className="panel-head"><div><b>Was als Nächstes technisch aktiviert wird</b><span>Die App-Oberfläche und Webhook-Endpunkte sind bereits vorbereitet.</span></div></div>{[['1','Meta App anlegen','Instagram API + Webhooks aktivieren'],['2','OAuth konfigurieren','Kunden verbinden ihren Account selbst'],['3','Webhook abonnieren','Neue DMs landen in unserer Conversation Engine'],['4','Send API verbinden','AI-Antworten gehen zurück in Instagram']].map(([n,t,d])=><div className="setup-step" key={n}><i>{n}</i><div><b>{t}</b><span>{d}</span></div></div>)}</div></>}
+  return <>
+    <PageHead eyebrow="PERFORMANCE" title="Analytics" desc="Echte Kennzahlen aus deinem aktuellen Workspace – ohne Hochrechnungen oder Beispieldaten."/>
+    <section className="metrics">
+      {[
+        ['Gespräche',String(total)],
+        ['Ø Lead Score',`${avgScore}%`],
+        ['AI aktiv',`${aiActive}%`],
+        ['Checkouts gesendet',String(checkout)],
+      ].map(([a,b])=><div className="metric" key={a}><strong>{b}</strong><span>{a}</span></div>)}
+    </section>
+    <div className="panel chart-panel">
+      <div className="panel-head"><div><b>Sales Funnel</b><span>Aktueller Workspace</span></div></div>
+      {total
+        ? <div className="big-bars">{funnel.map(([label,value])=><div key={label}><span>{label}</span><div><i style={{width:`${pct(Number(value))}%`}}/></div><b>{value}</b></div>)}</div>
+        : <div className="dashboard-empty"><BarChart3 size={24}/><b>Noch keine Analytics-Daten</b><span>Sobald echte Gespräche eingehen, wird der Funnel automatisch aufgebaut.</span></div>}
+    </div>
+  </>
+}
 
+function Integrations({instagram}:{instagram:Bootstrap['instagram'] & {ready?:boolean}}){
+  const [msg,setMsg]=useState('');
+  const [busy,setBusy]=useState(false);
+
+  async function connect(){
+    setBusy(true);
+    setMsg('');
+    try{
+      const r=await fetch('/api/meta/oauth/start',{method:'POST'});
+      const j:any=await r.json();
+      if(j.url){window.location.href=j.url;return;}
+      setMsg(j.error||'Instagram-Verbindung konnte nicht gestartet werden.');
+    }catch{
+      setMsg('Instagram-Verbindung konnte nicht gestartet werden.');
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  return <>
+    <PageHead eyebrow="INTEGRATIONEN" title="Instagram verbinden" desc="Verbinde deinen professionellen Instagram-Account sicher über die offizielle Meta API."/>
+    <div className="integration-card">
+      <div className="instagram-logo"><Instagram/></div>
+      <div className="integration-info">
+        <div><h3>Instagram</h3><span className="official">META API</span></div>
+        <p>Empfange DMs per Webhook und sende AI- oder manuelle Antworten über die offizielle Instagram API.</p>
+        <div className="feature-chips"><span><Check/> DMs</span><span><Check/> Webhooks</span><span><Check/> AI Antworten</span></div>
+      </div>
+      <div className="integration-action">
+        <span className={instagram.connected?'connected':'disconnected'}>{instagram.connected?`Verbunden${instagram.username?` · ${instagram.username}`:''}`:'Nicht verbunden'}</span>
+        <button className="primary" onClick={connect} disabled={busy||instagram.ready===false}>
+          <Instagram size={17}/> {busy?'Verbindung startet…':instagram.connected?'Neu verbinden':'Instagram verbinden'}
+        </button>
+      </div>
+    </div>
+    {instagram.ready===false&&<div className="notice warning-notice"><ShieldCheck/><div><b>Instagram API noch nicht freigeschaltet</b><p>Für diesen Deployment fehlen noch die vollständigen Meta-Zugangsdaten. Erst danach kann ein Kundenkonto verbunden werden.</p></div></div>}
+    {msg&&<div className="notice"><ShieldCheck/><div><b>Instagram</b><p>{msg}</p></div></div>}
+  </>
+}
 
 
 function EmailVerificationGate({
@@ -1347,7 +1445,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         <span>STARTER</span>
         <h3>39 €<small>/ Monat</small></h3>
         <p>Für Solo Creator und kleine Businesses.</p>
-        {['1 Instagram Account','500 AI-Konversationen','AI Sales Agent','Inbox & Leads','Basis Automationen'].map(x=><div key={x}><Check/>{x}</div>)}
+        {['1 Instagram Account','500 AI-Konversationen / Monat','AI Sales Agent','Inbox & Lead Intelligence','Test-Chat & Analytics'].map(x=><div key={x}><Check/>{x}</div>)}
         {planButton('starter')}
       </div>
 
@@ -1355,7 +1453,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         <span>PRO</span>
         <h3>99 €<small>/ Monat</small></h3>
         <p>Für Creator und Teams mit mehr Volumen.</p>
-        {['3 Instagram Accounts','5.000 AI-Konversationen','Erweiterte Sales Flows','Lead Scoring & Analytics','Human Handoff'].map(x=><div key={x}><Check/>{x}</div>)}
+        {['3 Instagram Accounts','5.000 AI-Konversationen / Monat','AI Sales Agent','Inbox & Lead Intelligence','Test-Chat & Analytics'].map(x=><div key={x}><Check/>{x}</div>)}
         {planButton('pro')}
       </div>
     </div>
@@ -1366,4 +1464,23 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
     </div>
   </>
 }
-function SettingsPage({user,organization,onLogout}:{user:any,organization:any,onLogout:()=>void}){return <><PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Dein Konto und dein privater Workspace."/><div className="panel account-settings"><div className="account-setting-row"><div><span>KONTO</span><b>{user.name}</b><small>{user.email}</small></div><span className="role-badge">{String(user.role||'owner').toUpperCase()}</span></div><div className="account-setting-row"><div><span>WORKSPACE</span><b>{organization.name}</b><small>Workspace-ID: {organization.id||'—'}</small></div><span className="role-badge">{String(organization.plan||'starter').toUpperCase()}</span></div><button className="secondary logout-button" onClick={onLogout}>Abmelden</button></div><div className="panel settings-list">{[['Team','Mitarbeiter und Rollen – nächster Ausbau'],['Sicherheit','Server-Sessions mit Secure/HttpOnly Cookie'],['Datenschutz','Workspace-Daten werden nach Organisation getrennt gespeichert']].map(([a,b])=><button key={a} disabled><div><b>{a}</b><span>{b}</span></div><ChevronRight/></button>)}</div></>}
+function SettingsPage({user,organization,onLogout}:{user:any,organization:any,onLogout:()=>void}){
+  return <>
+    <PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Kontoinformationen, Workspace und Sicherheit."/>
+    <div className="panel account-settings">
+      <div className="account-setting-row">
+        <div><span>KONTO</span><b>{user.name}</b><small>{user.email}</small></div>
+        <span className="role-badge">{user.emailVerified===false?'E-MAIL OFFEN':'VERIFIZIERT'}</span>
+      </div>
+      <div className="account-setting-row">
+        <div><span>WORKSPACE</span><b>{organization.name}</b><small>Workspace-ID: {organization.id||'—'}</small></div>
+        <span className="role-badge">{String(organization.plan||'starter').toUpperCase()}</span>
+      </div>
+      <div className="security-summary">
+        <ShieldCheck size={18}/>
+        <div><b>Sichere Anmeldung</b><span>Passwort-Hashing, HttpOnly/Secure Sessions und getrennte Workspace-Daten sind aktiv.</span></div>
+      </div>
+      <button className="secondary logout-button" onClick={onLogout}>Abmelden</button>
+    </div>
+  </>
+}
