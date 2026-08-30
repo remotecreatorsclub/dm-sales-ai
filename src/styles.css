@@ -2242,3 +2242,114 @@ body{min-height:100dvh;overflow-x:hidden}
   .auth-security span{font-size:9.5px}
   .account-setting-row{align-items:flex-start}
 }
+
+/* ==========================================================
+   v1.9 · BILLING GATE / PAID ONBOARDING
+   ========================================================== */
+.subscription-gate-page{
+  min-height:100dvh;
+  background:#f5f7fa;
+}
+.subscription-gate-top{
+  min-height:74px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:0 28px;
+  border-bottom:1px solid #e4e9ef;
+  background:#fff;
+}
+.subscription-gate-top .brand{
+  margin:0;
+  color:#142338;
+}
+.subscription-gate-top .brand span{
+  color:#8a97a7;
+}
+.subscription-account{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.subscription-account>div{
+  text-align:right;
+}
+.subscription-account b,
+.subscription-account span{
+  display:block;
+}
+.subscription-account b{
+  font-size:10.5px;
+  color:#233448;
+}
+.subscription-account span{
+  margin-top:2px;
+  color:#8a97a7;
+  font-size:8.5px;
+}
+.subscription-account .secondary{
+  min-height:34px;
+}
+.subscription-gate-main{
+  width:min(1080px,calc(100% - 32px));
+  margin:0 auto;
+  padding:48px 0 70px;
+}
+.subscription-gate-intro{
+  max-width:650px;
+  margin:0 auto 25px;
+  text-align:center;
+}
+.subscription-gate-intro h1{
+  margin:7px 0 8px;
+  color:#102135;
+  font-size:34px;
+  letter-spacing:-.035em;
+}
+.subscription-gate-intro p{
+  margin:0 auto;
+  max-width:560px;
+  color:#738195;
+  font-size:11px;
+  line-height:1.65;
+}
+.subscription-gate-main>.page-head{
+  display:none;
+}
+.subscription-gate-main .billing-status{
+  margin-top:0;
+}
+.subscription-gate-main .plans{
+  max-width:930px;
+  margin-left:auto;
+  margin-right:auto;
+}
+.subscription-gate-main .paypal-note{
+  max-width:930px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+@media(max-width:760px){
+  .subscription-gate-top{
+    min-height:66px;
+    padding:0 14px;
+  }
+  .subscription-account>div{
+    display:none;
+  }
+  .subscription-gate-main{
+    width:min(100% - 22px,700px);
+    padding:30px 0 50px;
+  }
+  .subscription-gate-intro{
+    margin-bottom:18px;
+  }
+  .subscription-gate-intro h1{
+    font-size:27px;
+  }
+  .subscription-gate-intro p{
+    font-size:10px;
+  }
+}
