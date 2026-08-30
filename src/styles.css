@@ -2391,3 +2391,167 @@ body{min-height:100dvh;overflow-x:hidden}
 .funnel-row .bar>i{
   min-width:0!important;
 }
+
+/* ==========================================================
+   v2.1 · EMAIL VERIFICATION + PASSWORD RESET
+   ========================================================== */
+.forgot-link,
+.auth-back-link{
+  border:0;
+  background:transparent;
+  color:#6b5ee7;
+  font:inherit;
+  font-size:9.5px;
+  font-weight:700;
+  cursor:pointer;
+}
+.forgot-link{
+  display:block;
+  margin:-2px 0 8px auto;
+  padding:3px 0;
+}
+.auth-back-link{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  margin:12px auto 0;
+  padding:5px;
+}
+.auth-success{
+  margin:10px 0 2px;
+  padding:10px 11px;
+  border:1px solid #c9eadc;
+  border-radius:9px;
+  background:#effaf5;
+  color:#18714f;
+  font-size:9.5px;
+  line-height:1.5;
+}
+.auth-result-page{
+  min-height:100dvh;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:#f5f7fa;
+}
+.auth-result-card{
+  width:min(470px,100%);
+  padding:38px;
+  border:1px solid #e1e6ed;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 20px 60px #10243a12;
+  text-align:center;
+}
+.auth-result-card .brand-mark{
+  margin:0 auto 16px;
+}
+.auth-result-card h1{
+  margin:7px 0 10px;
+  color:#102135;
+  font-size:28px;
+  letter-spacing:-.03em;
+}
+.auth-result-card p{
+  margin:0 auto 22px;
+  max-width:360px;
+  color:#778598;
+  font-size:11px;
+  line-height:1.65;
+}
+.auth-result-card .spinner{
+  margin:22px auto 0;
+}
+.auth-result-card .primary{
+  margin:0 auto;
+}
+.verification-gate-page{
+  min-height:100dvh;
+  background:#f5f7fa;
+}
+.verification-gate-main{
+  min-height:calc(100dvh - 74px);
+  display:grid;
+  place-items:center;
+  padding:36px 18px 70px;
+}
+.verification-card{
+  width:min(560px,100%);
+  padding:44px 42px;
+  border:1px solid #dfe6ee;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 20px 55px #13263b0c;
+  text-align:center;
+}
+.verification-icon{
+  width:54px;
+  height:54px;
+  display:grid;
+  place-items:center;
+  margin:0 auto 17px;
+  border-radius:16px;
+  background:#f0edff;
+  color:#6d5dfc;
+}
+.verification-card h1{
+  margin:7px 0 10px;
+  color:#102135;
+  font-size:30px;
+  letter-spacing:-.035em;
+}
+.verification-card>p{
+  margin:0 auto 22px;
+  max-width:450px;
+  color:#748195;
+  font-size:11px;
+  line-height:1.65;
+}
+.verification-card>p b{
+  color:#30445a;
+}
+.verification-actions{
+  display:flex;
+  justify-content:center;
+  gap:9px;
+  margin-top:16px;
+}
+.verification-card>small{
+  display:block;
+  margin-top:15px;
+  color:#96a1af;
+  font-size:8.5px;
+}
+
+@media(max-width:760px){
+  .forgot-link,
+  .auth-back-link{
+    font-size:11px;
+  }
+  .auth-success{
+    font-size:11px;
+  }
+  .auth-result-card{
+    padding:30px 20px;
+  }
+  .verification-gate-main{
+    min-height:calc(100dvh - 66px);
+    padding:24px 12px 50px;
+  }
+  .verification-card{
+    padding:30px 18px;
+  }
+  .verification-card h1{
+    font-size:26px;
+  }
+  .verification-card>p{
+    font-size:10px;
+  }
+  .verification-actions{
+    flex-direction:column;
+  }
+  .verification-actions button{
+    width:100%;
+  }
+}
