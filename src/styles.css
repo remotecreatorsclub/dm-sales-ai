@@ -2061,3 +2061,184 @@ body{min-height:100dvh;overflow-x:hidden}
   .billing-status-actions{width:100%;justify-content:space-between}
   .plans{grid-template-columns:1fr!important}
 }
+
+/* ==========================================================
+   v1.8 · REAL AUTH + MULTI TENANT
+   ========================================================== */
+.auth-tabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:4px;
+  padding:4px;
+  margin:0 0 16px;
+  border:1px solid #e4e9ef;
+  border-radius:10px;
+  background:#f5f7fa;
+}
+.auth-tabs button{
+  min-height:36px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:#7a8797;
+  font-size:10px;
+  font-weight:750;
+  cursor:pointer;
+}
+.auth-tabs button.active{
+  background:#fff;
+  color:#18283a;
+  box-shadow:0 3px 10px #1b2d4410;
+}
+.auth-error{
+  margin:10px 0 2px;
+  padding:10px 11px;
+  border:1px solid #f4c9c6;
+  border-radius:9px;
+  background:#fff4f3;
+  color:#a9423d;
+  font-size:9.5px;
+  line-height:1.5;
+}
+.auth-security{
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  margin-top:14px;
+  color:#8995a4;
+}
+.auth-security svg{
+  flex:0 0 auto;
+  color:#2ca875;
+  margin-top:1px;
+}
+.auth-security span{
+  font-size:8px;
+  line-height:1.55;
+}
+.login-submit:disabled{
+  opacity:.62;
+  cursor:wait;
+}
+.account-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  height:30px;
+  padding:0 10px;
+  border:1px solid #eadcae;
+  border-radius:999px;
+  background:#fff8df;
+  color:#9a6b08;
+  font-size:8.5px;
+  font-weight:800;
+  letter-spacing:.05em;
+}
+.account-pill>span{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:#d69b24;
+}
+.account-pill.active{
+  border-color:#cceadd;
+  background:#effaf5;
+  color:#16835a;
+}
+.account-pill.active>span{background:#26aa77}
+.logout-mini{
+  width:27px!important;
+  height:27px!important;
+  min-width:27px;
+  display:grid!important;
+  place-items:center;
+  padding:0!important;
+  margin-left:auto;
+  border:1px solid #293a4e!important;
+  border-radius:8px!important;
+  background:#122136!important;
+  color:#8fa0b5!important;
+  font-size:13px!important;
+  cursor:pointer;
+}
+.logout-mini:hover{
+  color:#fff!important;
+  border-color:#40536c!important;
+}
+.empty-workspace{
+  min-height:420px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:30px;
+}
+.empty-workspace>svg{
+  width:34px;
+  height:34px;
+  padding:9px;
+  box-sizing:content-box;
+  border-radius:14px;
+  background:#f0edff;
+  color:#7161ee;
+}
+.empty-workspace h3{
+  margin:13px 0 5px;
+  font-size:17px;
+}
+.empty-workspace p{
+  margin:0;
+  max-width:380px;
+  color:var(--muted);
+  font-size:10.5px;
+  line-height:1.6;
+}
+.account-settings{
+  padding:4px 20px 18px;
+  margin-bottom:16px;
+}
+.account-setting-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:17px 0;
+  border-bottom:1px solid var(--line);
+}
+.account-setting-row>div>span,
+.account-setting-row b,
+.account-setting-row small{
+  display:block;
+}
+.account-setting-row>div>span{
+  margin-bottom:5px;
+  color:#8b98a8;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+.account-setting-row b{font-size:12px}
+.account-setting-row small{
+  margin-top:3px;
+  color:#8b98a8;
+  font-size:8.5px;
+}
+.role-badge{
+  padding:6px 8px;
+  border-radius:7px;
+  background:#f0edff;
+  color:#6958df;
+  font-size:8px;
+  font-weight:800;
+}
+.logout-button{margin-top:16px}
+.settings-list button:disabled{opacity:.72;cursor:default}
+
+@media(max-width:760px){
+  .account-pill{display:none}
+  .auth-tabs button{font-size:12px}
+  .auth-error{font-size:11px}
+  .auth-security span{font-size:9.5px}
+  .account-setting-row{align-items:flex-start}
+}
