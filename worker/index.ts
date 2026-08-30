@@ -14,6 +14,12 @@ interface Env {
   HUMAN_BURST_WAIT_MIN_MS?: string;
   HUMAN_BURST_WAIT_MAX_MS?: string;
   INSTAGRAM_TYPING_ACTIONS?: string;
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_CLIENT_SECRET?: string;
+  PAYPAL_WEBHOOK_ID?: string;
+  PAYPAL_MODE?: string;
+  PAYPAL_STARTER_PLAN_ID?: string;
+  PAYPAL_PRO_PLAN_ID?: string;
 }
 
 type D1Row = Record<string, any>;
@@ -182,6 +188,15 @@ const json = (data: unknown, init: ResponseInit = {}) =>
 const demoBootstrap = {
   organization: { id: DEMO_ORG, name: 'Demo Workspace', plan: 'pro' },
   instagram: { connected: false, username: '@deinaccount', status: 'Demo-Modus' },
+  billing: {
+    provider: 'paypal',
+    plan: 'starter',
+    status: 'inactive',
+    subscriptionId: '',
+    currentPeriodEnd: '',
+    configured: false,
+    mode: 'sandbox',
+  },
   metrics: {
     conversationsToday: 47,
     qualifiedLeads: 18,
@@ -481,6 +496,31 @@ async function bootstrap(env: Env) {
       guardrails: agent.guardrails || '',
     };
   }
+
+  const subscription = await env.DB
+    .prepare(
+      `SELECT provider,provider_customer_id,provider_subscription_id,plan,status,current_period_end
+       FROM subscriptions
+       WHERE organization_id=?
+       LIMIT 1`,
+    )
+    .bind(DEMO_ORG)
+    .first<D1Row>();
+
+  data.billing = {
+    provider: subscription?.provider || 'paypal',
+    plan: subscription?.plan || 'starter',
+    status: subscription?.status || 'inactive',
+    subscriptionId: subscription?.provider_subscription_id || '',
+    currentPeriodEnd: subscription?.current_period_end || '',
+    configured: Boolean(
+      env.PAYPAL_CLIENT_ID &&
+      env.PAYPAL_CLIENT_SECRET &&
+      env.PAYPAL_STARTER_PLAN_ID &&
+      env.PAYPAL_PRO_PLAN_ID
+    ),
+    mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+  };
 
   return data;
 }
@@ -2107,6 +2147,426 @@ async function generateDemoDraft(
 }
 
 
+
+type PayPalPlanKey = 'starter' | 'pro';
+
+function paypalBaseUrl(env: Env) {
+  return env.PAYPAL_MODE === 'live'
+    ? 'https://api-m.paypal.com'
+    : 'https://api-m.sandbox.paypal.com';
+}
+
+function paypalPlanId(env: Env, plan: PayPalPlanKey) {
+  return plan === 'pro'
+    ? String(env.PAYPAL_PRO_PLAN_ID || '').trim()
+    : String(env.PAYPAL_STARTER_PLAN_ID || '').trim();
+}
+
+function paypalConfigured(env: Env) {
+  return Boolean(
+    env.PAYPAL_CLIENT_ID &&
+    env.PAYPAL_CLIENT_SECRET &&
+    env.PAYPAL_STARTER_PLAN_ID &&
+    env.PAYPAL_PRO_PLAN_ID
+  );
+}
+
+async function paypalAccessToken(env: Env) {
+  if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_CLIENT_SECRET) {
+    throw new Error('PayPal Client ID oder Client Secret fehlt.');
+  }
+
+  const credentials = btoa(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_CLIENT_SECRET}`);
+  const response = await fetch(`${paypalBaseUrl(env)}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: 'grant_type=client_credentials',
+  });
+
+  const raw = await response.text();
+  let payload: any = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { raw };
+  }
+
+  if (!response.ok || !payload?.access_token) {
+    throw new Error(
+      `PayPal Auth fehlgeschlagen: ${response.status} ${raw || 'unknown error'}`,
+    );
+  }
+
+  return String(payload.access_token);
+}
+
+async function paypalRequest(
+  env: Env,
+  path: string,
+  init: RequestInit = {},
+  requestId?: string,
+) {
+  const token = await paypalAccessToken(env);
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  headers.set('Accept', 'application/json');
+  if (init.body) headers.set('Content-Type', 'application/json');
+  if (requestId) headers.set('PayPal-Request-Id', requestId);
+
+  const response = await fetch(`${paypalBaseUrl(env)}${path}`, {
+    ...init,
+    headers,
+  });
+
+  const raw = await response.text();
+  let payload: any = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { raw };
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `PayPal API ${response.status}: ${payload?.message || raw || 'unknown error'}`,
+    );
+  }
+
+  return payload;
+}
+
+function paypalPlanFromProviderId(env: Env, providerPlanId: string) {
+  if (providerPlanId && providerPlanId === env.PAYPAL_PRO_PLAN_ID) return 'pro';
+  return 'starter';
+}
+
+async function paypalSubscriptionDetails(env: Env, subscriptionId: string) {
+  return paypalRequest(
+    env,
+    `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`,
+    { method: 'GET' },
+  );
+}
+
+async function currentPayPalSubscription(env: Env, organizationId: string) {
+  if (!env.DB) return null;
+  return env.DB
+    .prepare(
+      `SELECT provider,provider_customer_id,provider_subscription_id,plan,status,current_period_end
+       FROM subscriptions
+       WHERE organization_id=?
+       LIMIT 1`,
+    )
+    .bind(organizationId)
+    .first<D1Row>();
+}
+
+async function syncPayPalSubscription(
+  env: Env,
+  organizationId: string,
+  subscriptionId: string,
+) {
+  if (!env.DB || !subscriptionId) return null;
+
+  const details = await paypalSubscriptionDetails(env, subscriptionId);
+  const providerPlanId = String(details?.plan_id || '');
+  const plan = paypalPlanFromProviderId(env, providerPlanId);
+  const status = String(details?.status || 'UNKNOWN').toLowerCase();
+  const payerId = String(details?.subscriber?.payer_id || '');
+  const nextBilling = String(details?.billing_info?.next_billing_time || '');
+
+  await env.DB
+    .prepare(
+      `INSERT INTO subscriptions
+        (id,organization_id,provider,provider_customer_id,provider_subscription_id,plan,status,current_period_end)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT(organization_id)
+       DO UPDATE SET
+         provider='paypal',
+         provider_customer_id=excluded.provider_customer_id,
+         provider_subscription_id=excluded.provider_subscription_id,
+         plan=excluded.plan,
+         status=excluded.status,
+         current_period_end=excluded.current_period_end,
+         updated_at=CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      crypto.randomUUID(),
+      organizationId,
+      'paypal',
+      payerId || null,
+      subscriptionId,
+      plan,
+      status,
+      nextBilling || null,
+    )
+    .run();
+
+  if (status === 'active') {
+    await env.DB
+      .prepare('UPDATE organizations SET plan=?,updated_at=CURRENT_TIMESTAMP WHERE id=?')
+      .bind(plan, organizationId)
+      .run();
+  }
+
+  return {
+    provider: 'paypal',
+    plan,
+    status,
+    subscriptionId,
+    currentPeriodEnd: nextBilling,
+    configured: paypalConfigured(env),
+    webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
+    mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+  };
+}
+
+async function createOrRevisePayPalSubscription(
+  request: Request,
+  env: Env,
+  organizationId: string,
+  plan: PayPalPlanKey,
+) {
+  if (!paypalConfigured(env)) {
+    throw new Error(
+      'PayPal ist noch nicht vollständig konfiguriert. Client ID, Secret und beide Plan IDs fehlen noch.',
+    );
+  }
+
+  const targetPlanId = paypalPlanId(env, plan);
+  if (!targetPlanId) throw new Error(`PayPal Plan ID für ${plan} fehlt.`);
+
+  const existing = await currentPayPalSubscription(env, organizationId);
+  const existingId = String(existing?.provider_subscription_id || '');
+  const existingStatus = String(existing?.status || '').toLowerCase();
+
+  let payload: any;
+
+  if (
+    existingId &&
+    ['active', 'suspended'].includes(existingStatus) &&
+    String(existing?.plan || '') !== plan
+  ) {
+    payload = await paypalRequest(
+      env,
+      `/v1/billing/subscriptions/${encodeURIComponent(existingId)}/revise`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: targetPlanId }),
+      },
+      crypto.randomUUID(),
+    );
+  } else if (
+    existingId &&
+    ['active', 'approved', 'approval_pending'].includes(existingStatus) &&
+    String(existing?.plan || '') === plan
+  ) {
+    const current = await syncPayPalSubscription(env, organizationId, existingId);
+    if (current?.status === 'active') {
+      return { alreadyActive: true, billing: current };
+    }
+    payload = await paypalSubscriptionDetails(env, existingId);
+  } else {
+    const origin = new URL(request.url).origin;
+    payload = await paypalRequest(
+      env,
+      '/v1/billing/subscriptions',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          plan_id: targetPlanId,
+          application_context: {
+            brand_name: 'DM Sales AI',
+            user_action: 'SUBSCRIBE_NOW',
+            shipping_preference: 'NO_SHIPPING',
+            return_url: `${origin}/?billing=success`,
+            cancel_url: `${origin}/?billing=cancelled`,
+          },
+        }),
+      },
+      crypto.randomUUID(),
+    );
+
+    if (env.DB && payload?.id) {
+      await env.DB
+        .prepare(
+          `INSERT INTO subscriptions
+            (id,organization_id,provider,provider_subscription_id,plan,status)
+           VALUES (?,?,?,?,?,?)
+           ON CONFLICT(organization_id)
+           DO UPDATE SET
+             provider='paypal',
+             provider_subscription_id=excluded.provider_subscription_id,
+             plan=excluded.plan,
+             status=excluded.status,
+             current_period_end=NULL,
+             updated_at=CURRENT_TIMESTAMP`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          organizationId,
+          'paypal',
+          String(payload.id),
+          plan,
+          String(payload.status || 'APPROVAL_PENDING').toLowerCase(),
+        )
+        .run();
+    }
+  }
+
+  const approveUrl = Array.isArray(payload?.links)
+    ? payload.links.find((link: any) => link?.rel === 'approve')?.href
+    : null;
+
+  if (!approveUrl) {
+    throw new Error(
+      'PayPal hat keinen Freigabe-Link zurückgegeben. Bitte Subscription-Status prüfen.',
+    );
+  }
+
+  return {
+    approveUrl,
+    subscriptionId: payload?.id || existingId,
+    mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+  };
+}
+
+async function cancelPayPalSubscription(env: Env, organizationId: string) {
+  const current = await currentPayPalSubscription(env, organizationId);
+  const subscriptionId = String(current?.provider_subscription_id || '');
+
+  if (!subscriptionId) {
+    throw new Error('Keine PayPal Subscription gefunden.');
+  }
+
+  await paypalRequest(
+    env,
+    `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Vom Kunden in DM Sales AI gekündigt.' }),
+    },
+    crypto.randomUUID(),
+  );
+
+  if (env.DB) {
+    await env.DB
+      .prepare(
+        `UPDATE subscriptions
+         SET status='cancelled',updated_at=CURRENT_TIMESTAMP
+         WHERE organization_id=?`,
+      )
+      .bind(organizationId)
+      .run();
+  }
+
+  return { cancelled: true, subscriptionId };
+}
+
+async function verifyPayPalWebhook(
+  request: Request,
+  env: Env,
+  payload: any,
+) {
+  if (!env.PAYPAL_WEBHOOK_ID) {
+    throw new Error('PAYPAL_WEBHOOK_ID fehlt.');
+  }
+
+  const verification = await paypalRequest(
+    env,
+    '/v1/notifications/verify-webhook-signature',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        auth_algo: request.headers.get('paypal-auth-algo'),
+        cert_url: request.headers.get('paypal-cert-url'),
+        transmission_id: request.headers.get('paypal-transmission-id'),
+        transmission_sig: request.headers.get('paypal-transmission-sig'),
+        transmission_time: request.headers.get('paypal-transmission-time'),
+        webhook_id: env.PAYPAL_WEBHOOK_ID,
+        webhook_event: payload,
+      }),
+    },
+  );
+
+  return verification?.verification_status === 'SUCCESS';
+}
+
+async function handlePayPalWebhook(request: Request, env: Env) {
+  const raw = await request.text();
+  let payload: any;
+
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return new Response('Invalid JSON', { status: 400 });
+  }
+
+  try {
+    const verified = await verifyPayPalWebhook(request, env, payload);
+    if (!verified) return new Response('Invalid PayPal signature', { status: 401 });
+  } catch (error: any) {
+    console.error('PayPal webhook verification failed:', error?.message || error);
+    return new Response('Webhook verification failed', { status: 401 });
+  }
+
+  if (env.DB && payload?.id) {
+    const inserted = await env.DB
+      .prepare(
+        `INSERT OR IGNORE INTO webhook_events
+          (id,provider,external_event_id,organization_id,payload_json,processed)
+         VALUES (?,?,?,?,?,0)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        'paypal',
+        String(payload.id),
+        DEMO_ORG,
+        raw,
+      )
+      .run();
+
+    if ((inserted as any)?.meta?.changes === 0) {
+      return json({ received: true, duplicate: true });
+    }
+  }
+
+  const eventType = String(payload?.event_type || '');
+  const resource = payload?.resource || {};
+  let subscriptionId = '';
+
+  if (eventType.startsWith('BILLING.SUBSCRIPTION.')) {
+    subscriptionId = String(resource?.id || '');
+  } else if (eventType.startsWith('PAYMENT.SALE.')) {
+    subscriptionId = String(resource?.billing_agreement_id || '');
+  }
+
+  if (subscriptionId) {
+    try {
+      await syncPayPalSubscription(env, DEMO_ORG, subscriptionId);
+    } catch (error: any) {
+      console.error('PayPal subscription sync failed:', error?.message || error);
+    }
+  }
+
+  if (env.DB && payload?.id) {
+    await env.DB
+      .prepare(
+        `UPDATE webhook_events
+         SET processed=1,error=NULL
+         WHERE provider='paypal' AND external_event_id=?`,
+      )
+      .bind(String(payload.id))
+      .run();
+  }
+
+  return json({ received: true });
+}
+
 function hex(bytes: Uint8Array) {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -2836,6 +3296,11 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
         env.META_VERIFY_TOKEN &&
         env.TOKEN_ENCRYPTION_KEY
       ),
+      paypal: {
+        configured: paypalConfigured(env),
+        webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
+        mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+      },
     });
   }
 
@@ -2869,6 +3334,82 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     }
 
     return json({ ok: true, provider: 'cloudflare', model: aiModel(env), ...turn });
+  }
+
+  if (path === '/api/paypal/status' && request.method === 'GET') {
+    const current = await currentPayPalSubscription(env, DEMO_ORG);
+
+    if (
+      url.searchParams.get('sync') === '1' &&
+      current?.provider_subscription_id &&
+      paypalConfigured(env)
+    ) {
+      try {
+        const synced = await syncPayPalSubscription(
+          env,
+          DEMO_ORG,
+          String(current.provider_subscription_id),
+        );
+        return json({ ok: true, billing: synced });
+      } catch (error: any) {
+        return json(
+          {
+            ok: false,
+            error: error?.message || 'PayPal Status konnte nicht synchronisiert werden.',
+          },
+          { status: 502 },
+        );
+      }
+    }
+
+    return json({
+      ok: true,
+      billing: {
+        provider: current?.provider || 'paypal',
+        plan: current?.plan || 'starter',
+        status: current?.status || 'inactive',
+        subscriptionId: current?.provider_subscription_id || '',
+        currentPeriodEnd: current?.current_period_end || '',
+        configured: paypalConfigured(env),
+        webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
+        mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+      },
+    });
+  }
+
+  if (path === '/api/paypal/subscription' && request.method === 'POST') {
+    const body = await request.json<{ plan?: string }>();
+    const plan: PayPalPlanKey = body.plan === 'pro' ? 'pro' : 'starter';
+
+    try {
+      return json({
+        ok: true,
+        ...(await createOrRevisePayPalSubscription(request, env, DEMO_ORG, plan)),
+      });
+    } catch (error: any) {
+      return json(
+        { error: error?.message || 'PayPal Subscription konnte nicht erstellt werden.' },
+        { status: 502 },
+      );
+    }
+  }
+
+  if (path === '/api/paypal/cancel' && request.method === 'POST') {
+    try {
+      return json({
+        ok: true,
+        ...(await cancelPayPalSubscription(env, DEMO_ORG)),
+      });
+    } catch (error: any) {
+      return json(
+        { error: error?.message || 'PayPal Subscription konnte nicht gekündigt werden.' },
+        { status: 502 },
+      );
+    }
+  }
+
+  if (path === '/api/paypal/webhook' && request.method === 'POST') {
+    return handlePayPalWebhook(request, env);
   }
 
   if (path === '/api/meta/status' && request.method === 'GET') {
