@@ -20,6 +20,8 @@ interface Env {
   PAYPAL_MODE?: string;
   PAYPAL_STARTER_PLAN_ID?: string;
   PAYPAL_PRO_PLAN_ID?: string;
+  BILLING_ENFORCED?: string;
+  BILLING_ADMIN_EMAILS?: string;
 }
 
 type D1Row = Record<string, any>;
@@ -1068,6 +1070,19 @@ async function bootstrap(
     ),
     webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
     mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+  };
+
+  const access = await workspaceBillingAccess(
+    env,
+    auth.organizationId,
+    auth.email,
+  );
+
+  data.access = {
+    billingEnforced: access.enforced,
+    adminBypass: access.adminBypass,
+    paid: access.paid,
+    granted: access.granted,
   };
 
   return data;
@@ -2809,6 +2824,55 @@ async function currentPayPalSubscription(env: Env, organizationId: string) {
     .first<D1Row>();
 }
 
+
+function billingEnforced(env: Env) {
+  return env.BILLING_ENFORCED === 'true';
+}
+
+function isBillingAdmin(env: Env, email: string) {
+  const allowed = String(env.BILLING_ADMIN_EMAILS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  return allowed.includes(String(email || '').trim().toLowerCase());
+}
+
+function subscriptionHasEntitlement(subscription: D1Row | null) {
+  if (!subscription) return false;
+
+  const status = String(subscription.status || '').toLowerCase();
+  if (status === 'active') return true;
+
+  // Nach einer Kündigung bleibt der bereits bezahlte Zeitraum nutzbar,
+  // sofern PayPal uns einen zukünftigen Perioden-Endzeitpunkt geliefert hat.
+  if (status === 'cancelled' && subscription.current_period_end) {
+    const end = Date.parse(String(subscription.current_period_end));
+    if (Number.isFinite(end) && end > Date.now()) return true;
+  }
+
+  return false;
+}
+
+async function workspaceBillingAccess(
+  env: Env,
+  organizationId: string,
+  email: string,
+) {
+  const subscription = await currentPayPalSubscription(env, organizationId);
+  const adminBypass = isBillingAdmin(env, email);
+  const enforced = billingEnforced(env);
+  const paid = subscriptionHasEntitlement(subscription);
+
+  return {
+    enforced,
+    adminBypass,
+    paid,
+    granted: !enforced || adminBypass || paid,
+    subscription,
+  };
+}
+
 async function syncPayPalSubscription(
   env: Env,
   organizationId: string,
@@ -3864,6 +3928,12 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
         webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
         mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
       },
+      billingGate: {
+        enforced: billingEnforced(env),
+        adminBypassConfigured: Boolean(
+          String(env.BILLING_ADMIN_EMAILS || '').trim()
+        ),
+      },
     });
   }
 
@@ -4030,6 +4100,28 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
         { status: 502 },
       );
     }
+  }
+
+  const billingAccess = await workspaceBillingAccess(
+    env,
+    auth.organizationId,
+    auth.email,
+  );
+
+  if (!billingAccess.granted) {
+    return json(
+      {
+        error: 'Für diesen Workspace ist ein aktives Abo erforderlich.',
+        code: 'SUBSCRIPTION_REQUIRED',
+        billing: {
+          plan: billingAccess.subscription?.plan || 'starter',
+          status: billingAccess.subscription?.status || 'inactive',
+          currentPeriodEnd:
+            billingAccess.subscription?.current_period_end || '',
+        },
+      },
+      { status: 402 },
+    );
   }
 
   if (path === '/api/meta/status' && request.method === 'GET') {
