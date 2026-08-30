@@ -2353,3 +2353,41 @@ body{min-height:100dvh;overflow-x:hidden}
     font-size:10px;
   }
 }
+
+/* ==========================================================
+   v2.0 · REAL DASHBOARD DATA
+   Keine Demo-Zahlen, echte Funnel-Werte und leere Zustände.
+   ========================================================== */
+.trend.neutral{
+  background:#f2f4f7;
+  color:#77869a;
+}
+.dashboard-empty{
+  min-height:250px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:28px;
+  text-align:center;
+  color:#8b98a8;
+}
+.dashboard-empty.compact{
+  min-height:250px;
+}
+.dashboard-empty>svg{
+  color:#7566ef;
+}
+.dashboard-empty>b{
+  color:#33465b;
+  font-size:12px;
+}
+.dashboard-empty>span{
+  max-width:390px;
+  font-size:9.5px;
+  line-height:1.6;
+}
+.funnel-row .bar>i{
+  min-width:0!important;
+}
