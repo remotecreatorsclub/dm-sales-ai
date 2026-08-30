@@ -29,7 +29,8 @@ type Conversation = {
   summary?: string; knownFacts?: string; openQuestions?: string; nextStep?: string; styleProfile?: StyleProfile;
 };
 type Bootstrap = {
-  organization: { name: string; plan: string };
+  user?: { id?: string; name: string; email: string; role: string };
+  organization: { id?: string; name: string; plan: string };
   instagram: { connected: boolean; username: string; status: string };
   billing?: {
     provider?: string;
@@ -59,41 +60,181 @@ const stageLabel: Record<string, string> = {
 };
 
 export function App() {
-  const [authenticated, setAuthenticated] = useState(() => localStorage.getItem('dm-sales-ai-demo-auth') === '1');
-  if (!authenticated) return <Login onEnter={() => { localStorage.setItem('dm-sales-ai-demo-auth','1'); setAuthenticated(true); }} />;
-  return <ProductApp />;
+  const [auth,setAuth]=useState<any>(null);
+  const [checking,setChecking]=useState(true);
+
+  useEffect(()=>{
+    fetch('/api/auth/me')
+      .then(async r=>{
+        if(!r.ok)return null;
+        return r.json();
+      })
+      .then(j=>setAuth(j?.authenticated?j:null))
+      .catch(()=>setAuth(null))
+      .finally(()=>setChecking(false));
+  },[]);
+
+  if(checking){
+    return <div className="loading"><div className="spinner"/><span>Sichere Sitzung wird geprüft…</span></div>;
+  }
+
+  if(!auth){
+    return <Login onAuthenticated={setAuth}/>;
+  }
+
+  return <ProductApp auth={auth} onLogout={()=>setAuth(null)}/>;
 }
 
-function Login({onEnter}:{onEnter:()=>void}) {
+function Login({onAuthenticated}:{onAuthenticated:(value:any)=>void}) {
+  const [mode,setMode]=useState<'login'|'register'>('login');
+  const [name,setName]=useState('');
+  const [workspaceName,setWorkspaceName]=useState('');
   const [email,setEmail]=useState('');
-  return <div className="login-page"><div className="login-visual"><div className="login-brand"><div className="brand-mark"><Sparkles size={18}/></div><strong>DM Sales AI</strong></div><div className="login-copy"><span className="eyebrow light">AI SALES AGENT FOR INSTAGRAM</span><h1>Aus DMs werden<br/><em>Verkaufsgespräche.</em></h1><p>Deine KI versteht Interessenten, findet Painpoints, qualifiziert Leads und führt sie natürlich zum nächsten sinnvollen Schritt.</p><div className="login-flow"><span><MessageCircle/> Nachricht</span><ChevronRight/><span><BrainCircuit/> Verstehen</span><ChevronRight/><span><Target/> Qualifizieren</span><ChevronRight/><span><CircleDollarSign/> Verkaufen</span></div></div><small>Demo v0.1 · Offizielle Meta-Integration vorbereitet</small></div><div className="login-form-wrap"><div className="login-form"><span className="eyebrow">WORKSPACE LOGIN</span><h2>Willkommen zurück</h2><p>Öffne die aktuelle Produkt-Demo. Echte Authentifizierung wird mit dem Produktions-D1 aktiviert.</p><label><span>E-Mail</span><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@unternehmen.de"/></label><label><span>Passwort</span><input type="password" defaultValue="demodemo"/></label><button className="primary login-submit" onClick={onEnter}>Demo Workspace öffnen <ChevronRight size={16}/></button><div className="login-divider"><span>oder</span></div><button className="meta-login" onClick={onEnter}><Instagram size={17}/> Mit Instagram starten</button><small>Im Demo-Modus werden keine echten Instagram-Daten übertragen.</small></div></div></div>;
+  const [password,setPassword]=useState('');
+  const [error,setError]=useState('');
+  const [loading,setLoading]=useState(false);
+
+  async function submit(e?:React.FormEvent){
+    e?.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try{
+      const endpoint=mode==='login'?'/api/auth/login':'/api/auth/register';
+      const payload=mode==='login'
+        ? {email,password}
+        : {name,email,password,workspaceName};
+
+      const r=await fetch(endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload),
+      });
+      const j:any=await r.json();
+
+      if(!r.ok){
+        setError(j.error||'Anmeldung fehlgeschlagen.');
+        return;
+      }
+
+      onAuthenticated({
+        authenticated:true,
+        user:j.user,
+        organization:j.organization,
+      });
+    }catch{
+      setError('Verbindung fehlgeschlagen. Bitte versuche es erneut.');
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  function switchMode(next:'login'|'register'){
+    setMode(next);
+    setError('');
+    setPassword('');
+  }
+
+  return <div className="login-page">
+    <div className="login-visual">
+      <div className="login-brand"><div className="brand-mark"><Sparkles size={18}/></div><strong>DM Sales AI</strong></div>
+      <div className="login-copy">
+        <span className="eyebrow light">AI SALES AGENT</span>
+        <h1>Aus DMs werden<br/><em>Verkaufsgespräche.</em></h1>
+        <p>Jeder Account besitzt einen eigenen Workspace, einen eigenen AI Agent, eigene Leads und ein eigenes PayPal-Abo.</p>
+        <div className="login-flow"><span><MessageCircle/> Nachricht</span><ChevronRight/><span><BrainCircuit/> Verstehen</span><ChevronRight/><span><Target/> Qualifizieren</span><ChevronRight/><span><CircleDollarSign/> Verkaufen</span></div>
+      </div>
+      <small>Private Workspaces · sichere Server-Sessions · PayPal Billing</small>
+    </div>
+
+    <div className="login-form-wrap">
+      <form className="login-form" onSubmit={submit}>
+        <span className="eyebrow">{mode==='login'?'WORKSPACE LOGIN':'ACCOUNT ERSTELLEN'}</span>
+        <h2>{mode==='login'?'Willkommen zurück':'Dein eigener Workspace'}</h2>
+        <p>{mode==='login'
+          ? 'Melde dich an, um deinen privaten DM Sales AI Workspace zu öffnen.'
+          : 'Erstelle dein Konto. Deine Agent-Einstellungen, Leads und Abos werden getrennt von allen anderen Kunden gespeichert.'}</p>
+
+        <div className="auth-tabs">
+          <button type="button" className={mode==='login'?'active':''} onClick={()=>switchMode('login')}>Anmelden</button>
+          <button type="button" className={mode==='register'?'active':''} onClick={()=>switchMode('register')}>Registrieren</button>
+        </div>
+
+        {mode==='register'&&<>
+          <label><span>Dein Name</span><input autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Max Mustermann" required/></label>
+          <label><span>Workspace-Name</span><input value={workspaceName} onChange={e=>setWorkspaceName(e.target.value)} placeholder="z. B. Max Media" required/></label>
+        </>}
+
+        <label><span>E-Mail</span><input type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@unternehmen.de" required/></label>
+        <label><span>Passwort</span><input type="password" autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder={mode==='register'?'Mind. 10 Zeichen, Buchstabe + Zahl':'Dein Passwort'} required/></label>
+
+        {error&&<div className="auth-error">{error}</div>}
+
+        <button className="primary login-submit" type="submit" disabled={loading}>
+          {loading?'Bitte warten…':mode==='login'?'Workspace öffnen':'Konto erstellen'} <ChevronRight size={16}/>
+        </button>
+
+        <div className="auth-security"><ShieldCheck size={14}/><span>Passwörter werden gehasht gespeichert. Die Sitzung läuft ausschließlich über ein HttpOnly/Secure Cookie.</span></div>
+      </form>
+    </div>
+  </div>;
 }
 
-function ProductApp() {
+function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [view, setView] = useState<View>('dashboard');
-  const [selectedId, setSelectedId] = useState('conv_1');
+  const [selectedId, setSelectedId] = useState('');
   const [mobileNav, setMobileNav] = useState(false);
 
-  useEffect(() => { fetch('/api/bootstrap').then(r => r.json()).then(setData); }, []);
-  if (!data) return <div className="loading"><div className="spinner"/><span>DM Sales AI wird geladen…</span></div>;
+  useEffect(() => {
+    fetch('/api/bootstrap')
+      .then(async r=>{
+        if(r.status===401){
+          onLogout();
+          return null;
+        }
+        return r.json();
+      })
+      .then(j=>{
+        if(!j)return;
+        setData(j);
+        if(j.conversations?.[0]?.id)setSelectedId(j.conversations[0].id);
+      })
+      .catch(()=>undefined);
+  }, []);
+
+  async function logout(){
+    await fetch('/api/auth/logout',{method:'POST'}).catch(()=>undefined);
+    onLogout();
+  }
+
+  if (!data) return <div className="loading"><div className="spinner"/><span>Workspace wird geladen…</span></div>;
 
   const selected = data.conversations.find(c => c.id === selectedId) || data.conversations[0];
+  const user=data.user||auth?.user||{name:'Account Owner',email:'',role:'owner'};
+  const initials=String(user.name||user.email||'U').split(/\s+/).filter(Boolean).slice(0,2).map((x:string)=>x[0]?.toUpperCase()).join('')||'U';
+  const workspaceInitial=String(data.organization.name||'W').trim().slice(0,1).toUpperCase();
+  const billingActive=String(data.billing?.status||'').toLowerCase()==='active';
 
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
       <div className="brand"><div className="brand-mark"><Sparkles size={18}/></div><div><strong>DM Sales AI</strong><span>AI Sales Agent</span></div></div>
       <button className="mobile-close" onClick={() => setMobileNav(false)}><X/></button>
-      <div className="workspace"><div className="workspace-icon">D</div><div><strong>{data.organization.name}</strong><span>{data.organization.plan.toUpperCase()} PLAN</span></div><ChevronRight size={16}/></div>
-      <nav>{nav.map(([key,label,Icon]) => <button key={key} className={view === key ? 'active' : ''} onClick={() => {setView(key as View); setMobileNav(false)}}><Icon size={18}/><span>{label}</span>{key==='inbox' && <em>3</em>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>312 / 5.000</b></div><div className="usage-bar"><i style={{width:'6.2%'}}/></div><small>PRO · erneuert in 18 Tagen</small></div><div className="user"><div className="avatar dark">KD</div><div><strong>Account Owner</strong><span>owner@workspace</span></div><Settings size={16}/></div></div>
+      <div className="workspace"><div className="workspace-icon">{workspaceInitial}</div><div><strong>{data.organization.name}</strong><span>{String(data.organization.plan||'starter').toUpperCase()} PLAN</span></div><ChevronRight size={16}/></div>
+      <nav>{nav.map(([key,label,Icon]) => <button key={key} className={view === key ? 'active' : ''} onClick={() => {setView(key as View); setMobileNav(false)}}><Icon size={18}/><span>{label}</span>{key==='inbox' && data.conversations.length>0 && <em>{data.conversations.length}</em>}</button>)}</nav>
+      <div className="sidebar-bottom">
+        <div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>{data.conversations.length} / {String(data.organization.plan).toLowerCase()==='pro'?'5.000':'500'}</b></div><div className="usage-bar"><i style={{width:`${Math.min(100,(data.conversations.length/(String(data.organization.plan).toLowerCase()==='pro'?5000:500))*100)}%`}}/></div><small>{String(data.organization.plan||'starter').toUpperCase()} · {billingActive?'Abo aktiv':'Abo nicht aktiv'}</small></div>
+        <div className="user"><div className="avatar dark">{initials}</div><div><strong>{user.name||'Account Owner'}</strong><span>{user.email}</span></div><button className="logout-mini" onClick={logout} title="Abmelden">↗</button></div>
+      </div>
     </aside>
     {mobileNav && <div className="overlay" onClick={()=>setMobileNav(false)}/>} 
     <main className="main">
-      <header className="topbar"><button className="menu-btn" onClick={()=>setMobileNav(true)}><Menu/></button><div className="top-title"><span>Workspace</span><b>/</b><strong>{labelFor(view)}</strong></div><div className="top-actions"><span className="demo-pill"><span/> DEMO</span><button className="connect-mini" onClick={()=>setView('integrations')}><Instagram size={16}/> Instagram verbinden</button></div></header>
+      <header className="topbar"><button className="menu-btn" onClick={()=>setMobileNav(true)}><Menu/></button><div className="top-title"><span>Workspace</span><b>/</b><strong>{labelFor(view)}</strong></div><div className="top-actions"><span className={`account-pill ${billingActive?'active':''}`}><span/> {billingActive?String(data.billing?.plan||data.organization.plan).toUpperCase():'SETUP'}</span><button className="connect-mini" onClick={()=>setView('integrations')}><Instagram size={16}/> Instagram verbinden</button></div></header>
       <div className={view === 'inbox' ? 'content content-inbox' : 'content'}>
         {view === 'dashboard' && <Dashboard data={data} onOpenInbox={()=>setView('inbox')} onConnect={()=>setView('integrations')}/>} 
-        {view === 'inbox' && <Inbox conversations={data.conversations} selected={selected} setSelected={setSelectedId} updateConversation={(conv)=>setData({...data, conversations:data.conversations.map(c=>c.id===conv.id?conv:c)})}/>} 
+        {view === 'inbox' && (selected
+          ? <Inbox conversations={data.conversations} selected={selected} setSelected={setSelectedId} updateConversation={(conv)=>setData({...data, conversations:data.conversations.map(c=>c.id===conv.id?conv:c)})}/>
+          : <EmptyInbox/>)} 
         {view === 'test' && <TestChat agent={data.agent}/>} 
         {view === 'leads' && <Leads conversations={data.conversations} onOpen={(id)=>{setSelectedId(id);setView('inbox')}}/>}
         {view === 'automations' && <Automations/>}
@@ -101,10 +242,14 @@ function ProductApp() {
         {view === 'analytics' && <Analytics data={data}/>} 
         {view === 'integrations' && <Integrations instagram={data.instagram}/>} 
         {view === 'billing' && <Billing initial={data.billing}/>}  
-        {view === 'settings' && <SettingsPage/>} 
+        {view === 'settings' && <SettingsPage user={user} organization={data.organization} onLogout={logout}/>} 
       </div>
     </main>
   </div>;
+}
+
+function EmptyInbox(){
+  return <div className="empty-workspace panel"><MessageCircle/><h3>Noch keine Gespräche</h3><p>Sobald ein Kanal verbunden ist und die erste Nachricht eingeht, erscheint sie hier in deinem privaten Workspace.</p></div>;
 }
 
 function labelFor(v: View){ return nav.find(x=>x[0]===v)?.[1] || 'Dashboard'; }
@@ -796,4 +941,4 @@ function Billing({initial}:{initial?:Bootstrap['billing']}){
     </div>
   </>
 }
-function SettingsPage(){return <><PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Workspace, Team, Sicherheit und später die SaaS-Verwaltung."/><div className="panel settings-list">{[['Workspace','Name, Sprache und Standard-Zeitzone'],['Team','Mitarbeiter und Rollen'],['Sicherheit','Sessions, Webhooks und API Secrets'],['Datenschutz','Löschfristen und Datenexport']].map(([a,b])=><button key={a}><div><b>{a}</b><span>{b}</span></div><ChevronRight/></button>)}</div></>}
+function SettingsPage({user,organization,onLogout}:{user:any,organization:any,onLogout:()=>void}){return <><PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Dein Konto und dein privater Workspace."/><div className="panel account-settings"><div className="account-setting-row"><div><span>KONTO</span><b>{user.name}</b><small>{user.email}</small></div><span className="role-badge">{String(user.role||'owner').toUpperCase()}</span></div><div className="account-setting-row"><div><span>WORKSPACE</span><b>{organization.name}</b><small>Workspace-ID: {organization.id||'—'}</small></div><span className="role-badge">{String(organization.plan||'starter').toUpperCase()}</span></div><button className="secondary logout-button" onClick={onLogout}>Abmelden</button></div><div className="panel settings-list">{[['Team','Mitarbeiter und Rollen – nächster Ausbau'],['Sicherheit','Server-Sessions mit Secure/HttpOnly Cookie'],['Datenschutz','Workspace-Daten werden nach Organisation getrennt gespeichert']].map(([a,b])=><button key={a} disabled><div><b>{a}</b><span>{b}</span></div><ChevronRight/></button>)}</div></>}
