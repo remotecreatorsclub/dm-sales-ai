@@ -794,6 +794,9 @@ Nur true, wenn der Lead klar sagt, dass er starten/kaufen will oder ausdrücklic
 WICHTIGE PLANUNGSREGELN:
 - Ein kurzes "ja gerne" ist eine Zustimmung zur vorherigen AI-Frage. Erfülle das Versprechen zuerst. Stelle NICHT direkt wieder eine neue Erlaubnisfrage.
 - Wenn die letzten zwei AI-Nachrichten bereits Fragen waren, bevorzuge eine wertgebende Antwort ohne neue Frage.
+- Wenn der Lead neue inhaltliche Information liefert (z. B. "ich bin noch ganz am Anfang"), darf die nächste Antwort NICHT nur "Okay.", "Ja.", "Genau." oder eine andere leere Bestätigung sein.
+- Wenn durch die neue Information ein sinnvoller nächster Punkt offen ist, darf should_ask_question=true sein. Stelle dann genau EINE natürliche Frage.
+- Wenn der Lead sagt, dass er ganz am Anfang ist und Ziel/Painpoint noch unklar sind, markiere ihn als Anfänger und frage höchstens nach EINEM der beiden Punkte.
 - Frage den Lead nicht nach der Lösung seines eigenen Problems. Beispiel schlecht: "Was denkst du, wäre der erste Schritt?"
 - Bei einer konkreten Produktfrage hat die Antwort Vorrang vor weiterer Qualifizierung.
 - Bei klarer Startabsicht: close, should_send_checkout=true, keine weitere Qualifizierungsfrage.
@@ -863,7 +866,7 @@ Ziel der Frage: ${lead.question_goal || 'Keine'}
 Checkout senden: ${lead.should_send_checkout === true ? 'JA' : 'NEIN'}
 
 Der Reply-Plan ist bindend:
-- Wenn "Neue Frage stellen: NEIN", ende NICHT mit einer neuen Frage.
+- Wenn "Neue Frage stellen: NEIN", ende NICHT mit einer neuen Frage. Schreibe trotzdem eine inhaltlich vollständige Antwort und nicht nur "Okay." oder "Ja.".
 - Wenn "Zwingend beantworten" nicht "Keine" ist, beantworte genau das zuerst.
 - Wenn "Checkout senden: JA" und ein Checkout-Link hinterlegt ist, sende ihn direkt und ohne weitere Qualifizierung.
 - Wenn Reply-Modus "answer" ist, beantworte die Frage; verkaufe nicht zusätzlich ungefragt.
@@ -1645,15 +1648,14 @@ function cleanConversationReply(value: string, shouldAskQuestion = true) {
     .replace(/\bDas könnte für dich eine bessere Option sein\.?$/i, '')
     .trim();
 
-  if (!shouldAskQuestion) {
-    const parts = reply.match(/[^.!?]+[.!?]?/g)?.map((x) => x.trim()).filter(Boolean) || [];
-    if (parts.length > 1 && /\?$/.test(parts[parts.length - 1])) {
-      reply = parts.slice(0, -1).join(' ').trim();
-    }
-  }
+  // German prices sometimes come back as "1. 197 €". Normalize only obvious thousands formatting.
+  reply = reply
+    .replace(/(\d)\.\s+(\d{3})(?=\D|$)/g, '$1.$2')
+    .replace(/(\d)\s+\.\s*(\d{3})(?=\D|$)/g, '$1.$2');
 
-  const sentences = reply.match(/[^.!?]+[.!?]?/g)?.map((x) => x.trim()).filter(Boolean) || [];
-  if (sentences.length > 2) reply = sentences.slice(0, 2).join(' ').trim();
+  // Do NOT cut sentences here. Abbreviations such as "bzw." and "z. B." were previously
+  // mistaken for sentence endings and produced broken replies like "Reichweite bzw.".
+  // Length is validated separately and retried by the conversation validator.
 
   return reply;
 }
@@ -1689,7 +1691,7 @@ async function generateValidatedNaturalReply(
     if (!violation) return { reply, violation: '' };
 
     retryNote =
-      `${violation}\nKeine Standardfloskel als Ersatz verwenden. Direkt, knapp und wie eine echte Instagram-DM formulieren.`;
+      `${violation}\nKeine Standardfloskel und keine leere Ein-Wort-Bestätigung als Ersatz verwenden. Direkt, knapp und wie eine echte Instagram-DM formulieren.`;
   }
 
   const finalReply = cleanConversationReply(lastReply, lead.should_ask_question !== false);
@@ -1698,6 +1700,30 @@ async function generateValidatedNaturalReply(
     : lastViolation || 'Keine valide Antwort erzeugt.';
 
   return { reply: finalReply, violation: finalViolation };
+}
+
+function sentenceCountForDm(value: string) {
+  let safe = String(value || '');
+
+  // Protect common German abbreviations and thousands separators from sentence splitting.
+  safe = safe
+    .replace(/\b(bzw|ca|etc|inkl|zzgl|ggf|evtl|bspw|usw)\./gi, (_m, word) => `${word}§`)
+    .replace(/\bz\.\s*b\./gi, 'z§ B§')
+    .replace(/\bd\.\s*h\./gi, 'd§ h§')
+    .replace(/\bu\.\s*a\./gi, 'u§ a§')
+    .replace(/(\d)\.(\d{3})(?=\D|$)/g, '$1§$2')
+    .replace(/https?:\/\/\S+/gi, (url) => url.replace(/[.!?]/g, '§'));
+
+  return safe
+    .split(/[.!?]+(?:\s|$)/)
+    .map((part) => part.trim())
+    .filter(Boolean).length;
+}
+
+function isEmptyAcknowledgement(value: string) {
+  return /^(okay|ok|ja|genau|klar|mhm|hm|verstehe|macht sinn)[.! ]*$/i.test(
+    String(value || '').trim(),
+  );
 }
 
 function naturalReplyViolation(
@@ -1758,6 +1784,15 @@ function naturalReplyViolation(
     return 'Direkte Informationsfrage: ohne Validierungs-/Empathie-Füllsatz starten. Beginne unmittelbar mit der sachlichen Antwort.';
   }
 
+  const simpleLeadAck = /^\s*(ja|nein|okay|ok|klar|genau|mhm|hm|gerne|gern)[.! ]*$/i.test(latestLead);
+  if (
+    !simpleLeadAck &&
+    latestLead.trim().length >= 10 &&
+    isEmptyAcknowledgement(reply)
+  ) {
+    return 'Die Antwort ist inhaltlich leer. Greife die neue Information des Leads konkret auf und führe das Gespräch natürlich weiter.';
+  }
+
   const previousAI = [...history].reverse().find((m) => m.role === 'assistant')?.content || '';
   const shortConsent = /^\s*(ja|ja gern|ja gerne|gerne|gern|okay|ok|klar|genau|mach|bitte|yes|sure)[.! ]*$/i.test(latestLead);
   if (
@@ -1815,10 +1850,7 @@ function naturalReplyViolation(
     }
   }
 
-  const sentenceCount = reply
-    .split(/[.!?]+(?:\s|$)/)
-    .map((part) => part.trim())
-    .filter(Boolean).length;
+  const sentenceCount = sentenceCountForDm(reply);
   if (sentenceCount > 2) {
     return 'Die Antwort ist zu lang. Maximal 1-2 kurze Sätze.';
   }
