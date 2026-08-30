@@ -11,7 +11,6 @@
   },
 
   "vars": {
-    "DEMO_MODE": "false",
     "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
     "HUMAN_REPLY_MIN_MS": "4200",
     "HUMAN_REPLY_MAX_MS": "14000",
