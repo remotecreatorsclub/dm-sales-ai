@@ -2106,6 +2106,84 @@ async function generateDemoDraft(
   return turn;
 }
 
+
+function hex(bytes: Uint8Array) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function constantTimeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+async function verifyMetaWebhookSignature(
+  request: Request,
+  rawBody: string,
+  appSecret: string,
+) {
+  const header = request.headers.get('X-Hub-Signature-256') || '';
+  if (!header.startsWith('sha256=')) return false;
+
+  const supplied = header.slice('sha256='.length).trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(supplied)) return false;
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(appSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+
+  const digest = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(rawBody),
+  );
+
+  const expected = hex(new Uint8Array(digest));
+  return constantTimeEqual(expected, supplied);
+}
+
+async function subscribeInstagramWebhooks(
+  env: Env,
+  instagramUserId: string,
+  accessToken: string,
+) {
+  const endpoint = new URL(
+    `https://graph.instagram.com/${apiVersion(env)}/${instagramUserId}/subscribed_apps`,
+  );
+  endpoint.searchParams.set('subscribed_fields', 'messages,messaging_postbacks');
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const raw = await response.text();
+  let payload: any = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { raw };
+  }
+
+  if (!response.ok || payload?.success !== true) {
+    throw new Error(
+      `Instagram Webhook-Abo fehlgeschlagen: ${response.status} ${raw || 'unknown error'}`,
+    );
+  }
+
+  return payload;
+}
+
 function oauthStart(request: Request, env: Env) {
   if (!env.META_APP_ID) {
     return json(
@@ -2195,6 +2273,22 @@ async function oauthCallback(request: Request, env: Env) {
   }
 
   const profile: any = await profileRes.json();
+
+  // Für echte DM-Automation muss die App pro verbundenem Professional Account
+  // die Messaging-Webhooks abonnieren. Ohne dieses Abo würden eingehende DMs
+  // trotz erfolgreichem OAuth nicht in unserer Conversation Engine landen.
+  try {
+    await subscribeInstagramWebhooks(
+      env,
+      String(profile.id),
+      accessToken,
+    );
+  } catch (error: any) {
+    return new Response(
+      error?.message || 'Instagram Webhook-Abo konnte nicht aktiviert werden.',
+      { status: 502 },
+    );
+  }
 
   if (env.DB) {
     if (!env.TOKEN_ENCRYPTION_KEY) {
@@ -2569,12 +2663,32 @@ async function processInboundMessage(
 
 async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext) {
   const raw = await request.text();
+
+  // Meta signs webhook payloads with the App Secret. In every configured
+  // environment we reject unsigned/forged POST requests before touching D1.
+  if (env.META_APP_SECRET) {
+    const validSignature = await verifyMetaWebhookSignature(
+      request,
+      raw,
+      env.META_APP_SECRET,
+    );
+
+    if (!validSignature) {
+      console.warn('Instagram webhook rejected: invalid X-Hub-Signature-256.');
+      return new Response('Invalid signature', { status: 401 });
+    }
+  }
+
   let payload: any;
 
   try {
     payload = JSON.parse(raw);
   } catch {
     return json({ received: true });
+  }
+
+  if (payload?.object && payload.object !== 'instagram') {
+    return json({ received: true, ignored: true });
   }
 
   if (env.DB) {
@@ -2716,7 +2830,12 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       humanReplyMinMs: envInt(env.HUMAN_REPLY_MIN_MS, 4200),
       humanReplyMaxMs: envInt(env.HUMAN_REPLY_MAX_MS, 14000),
       instagramTypingActions: env.INSTAGRAM_TYPING_ACTIONS !== 'false',
-      meta: Boolean(env.META_APP_ID && env.META_APP_SECRET),
+      meta: Boolean(
+        env.META_APP_ID &&
+        env.META_APP_SECRET &&
+        env.META_VERIFY_TOKEN &&
+        env.TOKEN_ENCRYPTION_KEY
+      ),
     });
   }
 
@@ -2753,9 +2872,35 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
   }
 
   if (path === '/api/meta/status' && request.method === 'GET') {
+    let account: D1Row | null = null;
+
+    if (env.DB) {
+      account = await env.DB
+        .prepare(
+          `SELECT username,status,token_expires_at,connected_at
+           FROM instagram_accounts
+           WHERE organization_id=?
+           ORDER BY connected_at DESC
+           LIMIT 1`,
+        )
+        .bind(DEMO_ORG)
+        .first<D1Row>();
+    }
+
     return json({
-      connected: false,
-      ready: Boolean(env.META_APP_ID && env.META_APP_SECRET),
+      connected: account?.status === 'connected',
+      username: account?.username || null,
+      tokenExpiresAt: account?.token_expires_at || null,
+      connectedAt: account?.connected_at || null,
+      ready: Boolean(
+        env.META_APP_ID &&
+        env.META_APP_SECRET &&
+        env.META_VERIFY_TOKEN &&
+        env.TOKEN_ENCRYPTION_KEY
+      ),
+      webhookUrl: `${url.origin}/api/meta/webhook`,
+      redirectUrl: redirectUri(request, env),
+      requiredWebhookFields: ['messages', 'messaging_postbacks'],
       mode: env.DEMO_MODE !== 'false' ? 'demo' : 'production',
     });
   }
