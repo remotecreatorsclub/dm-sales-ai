@@ -1,86 +1,96 @@
-# DM Sales AI — v0.1
+# DM Sales AI
 
-Eine Cloudflare-basierte Web-App/SaaS-Basis für einen Instagram AI Sales Agent.
+DM Sales AI ist eine Cloudflare-basierte SaaS-Anwendung für AI-gestützte Instagram-DM-Verkaufsgespräche.
 
-## Was bereits gebaut ist
-- Login/Demo-Gate
-- Dashboard mit Sales-Funnel und Hot Leads
-- Inbox mit Conversation-Ansicht
-- Lead Intelligence: Stage, Painpoint, Ziel, Budget, Einwand, Score
+## Produktionsfunktionen
+
+- Registrierung und Login mit sicheren HttpOnly/Secure Sessions
+- E-Mail-Verifizierung und Passwort-Reset
+- Multi-Tenant-Workspaces
+- PayPal Starter-/Pro-Abonnements mit Webhook-Synchronisierung
+- Serverseitiger Subscription Gate
+- AI Sales Agent mit Knowledge Base, Sales-Regeln und Guardrails
+- Test-Chat für den konfigurierten Agent
+- Instagram OAuth, Webhook Receiver und Send API
+- Inbox, Leads und Lead Intelligence
 - Human Takeover / AI Pause
-- AI-Agent-Konfiguration
-- Automationen-Bereich
-- Analytics
-- Integrationen
-- Billing mit Starter/Pro
-- Cloudflare Worker API
-- D1 Multi-Tenant-Schema
-- Instagram Business Login OAuth Start + Callback
-- Meta Webhook Verify + Webhook Receiver
-- Inbound DM → Lead → Conversation → Message
-- OpenAI Responses API Sales-Turn mit strukturiertem Output
-- Automatische Lead-/Stage-Aktualisierung
-- Instagram Send API für AI- und manuelle Antworten
+- Lead Memory und Style Profile
+- Echtes Dashboard und Analytics auf Workspace-Daten
 - AES-GCM-Verschlüsselung für Instagram Access Tokens
+- Monatliche Planlimits für neue AI-Konversationen
+- Instagram-Account-Limits nach Plan
 
 ## Stack
+
 - React + Vite
-- Cloudflare Vite Plugin
 - Cloudflare Workers
 - Cloudflare D1
-- OpenAI Responses API
-- Meta Instagram API with Instagram Login
+- Cloudflare Workers AI
+- Meta Instagram API
+- PayPal Subscriptions
+- Resend für transaktionale E-Mails
 
-## Lokal starten
-```bash
-npm install
-cp .dev.vars.example .dev.vars
-npm run dev
-```
+## Benötigte Runtime-Secrets / Variablen
 
-Ohne Secrets läuft die Web-App im Demo-Modus.
+### Meta
+- `META_APP_ID`
+- `META_APP_SECRET`
+- `META_VERIFY_TOKEN`
+- `TOKEN_ENCRYPTION_KEY`
+- optional `META_REDIRECT_URI`
+- optional `META_API_VERSION`
 
-## D1 aktivieren
+### PayPal
+- `PAYPAL_CLIENT_ID`
+- `PAYPAL_CLIENT_SECRET`
+- `PAYPAL_WEBHOOK_ID`
+- `PAYPAL_STARTER_PLAN_ID`
+- `PAYPAL_PRO_PLAN_ID`
+- `PAYPAL_MODE=live`
+- `BILLING_ENFORCED=true`
+- optional `BILLING_ADMIN_EMAILS`
+
+### E-Mail
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `APP_URL`
+- `EMAIL_VERIFICATION_ENFORCED=true`
+
+### AI / Pacing
+- AI Binding: `AI`
+- `AI_MODEL`
+- `HUMAN_REPLY_MIN_MS`
+- `HUMAN_REPLY_MAX_MS`
+- `HUMAN_BURST_WAIT_MIN_MS`
+- `HUMAN_BURST_WAIT_MAX_MS`
+- `INSTAGRAM_TYPING_ACTIONS`
+
+## Datenbank
+
+Remote-Migrationen:
+
 ```bash
-npx wrangler d1 create dm-sales-ai
-```
-Danach die ausgegebene Bindung als `DB` in `wrangler.jsonc` eintragen und den kommentierten D1-Beispielblock ersetzen. Anschließend:
-```bash
-npx wrangler d1 migrations apply dm-sales-ai --local
 npx wrangler d1 migrations apply dm-sales-ai --remote
 ```
 
-## Secrets / Variablen
-Siehe `.dev.vars.example`. Für Produktion Secrets mit Wrangler setzen, z. B.:
+## Build prüfen
+
 ```bash
-npx wrangler secret put META_APP_SECRET
-npx wrangler secret put TOKEN_ENCRYPTION_KEY
-npx wrangler secret put OPENAI_API_KEY
+npm install
+npm run typecheck
+npm run build
 ```
-`TOKEN_ENCRYPTION_KEY` muss aus 32 zufälligen Bytes bestehen und Base64-codiert sein:
-```bash
-openssl rand -base64 32
-```
-
-## Meta Callback / Webhook
-OAuth Callback:
-`https://DEINE-DOMAIN/api/meta/oauth/callback`
-
-Webhook:
-`https://DEINE-DOMAIN/api/meta/webhook`
-
-Benötigte Instagram-Berechtigungen im aktuellen Build:
-- `instagram_business_basic`
-- `instagram_business_manage_messages`
-- `instagram_business_manage_comments`
-
-## AI
-Standardmodell im Beispiel: `gpt-5.6-luna`. Der Modellname ist über `OPENAI_MODEL` austauschbar. Responses werden mit `store:false` angefordert.
 
 ## Deploy
+
 ```bash
 npm run deploy
 ```
 
-## Wichtig für v0.2
-Die App verwendet aktuell einen Demo-Workspace (`org_demo`) als Übergangsschicht. Der nächste Produktionsschritt ist echte Benutzer-/Session-Authentifizierung und saubere Organisation-Zuordnung beim OAuth-State. Das Datenmodell dafür ist bereits vorhanden.
+## Produktions-Check vor öffentlichem Launch
+
+1. `/api/health` zeigt `database: true`, `ai: true`, `paypal.configured: true`.
+2. `meta: true`, bevor Kunden Instagram verbinden.
+3. `emailAuth.configured: true` und erst dann `EMAIL_VERIFICATION_ENFORCED=true`.
+4. Starter- und Pro-Checkout mit einem externen PayPal-Konto testen.
+5. Instagram OAuth, eingehende DM, AI-Antwort und Human Takeover Ende-zu-Ende testen.
