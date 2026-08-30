@@ -3,6 +3,7 @@
   "name": "dm-sales-ai",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-29",
+  "keep_vars": true,
 
   "assets": {
     "not_found_handling": "single-page-application",
@@ -10,13 +11,15 @@
   },
 
   "vars": {
-    "DEMO_MODE": "true",
+    "DEMO_MODE": "false",
     "AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
     "HUMAN_REPLY_MIN_MS": "4200",
     "HUMAN_REPLY_MAX_MS": "14000",
     "HUMAN_BURST_WAIT_MIN_MS": "1400",
     "HUMAN_BURST_WAIT_MAX_MS": "2400",
-    "INSTAGRAM_TYPING_ACTIONS": "true"
+    "INSTAGRAM_TYPING_ACTIONS": "true",
+    "PAYPAL_MODE": "live",
+    "BILLING_ENFORCED": "true"
   },
 
   "ai": {
