@@ -29,7 +29,7 @@ type Conversation = {
   summary?: string; knownFacts?: string; openQuestions?: string; nextStep?: string; styleProfile?: StyleProfile;
 };
 type Bootstrap = {
-  user?: { id?: string; name: string; email: string; role: string };
+  user?: { id?: string; name: string; email: string; role: string; emailVerified?: boolean };
   organization: { id?: string; name: string; plan: string };
   instagram: { connected: boolean; username: string; status: string };
   billing?: {
@@ -47,6 +47,8 @@ type Bootstrap = {
     adminBypass?: boolean;
     paid?: boolean;
     granted?: boolean;
+    emailVerificationEnforced?: boolean;
+    emailVerified?: boolean;
   };
   metrics: Record<string, number>;
   conversations: Conversation[];
@@ -66,10 +68,16 @@ const stageLabel: Record<string, string> = {
 };
 
 export function App() {
+  const params=new URLSearchParams(window.location.search);
+  const verifyToken=params.get('verify');
+  const resetToken=params.get('reset');
+
   const [auth,setAuth]=useState<any>(null);
-  const [checking,setChecking]=useState(true);
+  const [checking,setChecking]=useState(!verifyToken&&!resetToken);
 
   useEffect(()=>{
+    if(verifyToken||resetToken)return;
+
     fetch('/api/auth/me')
       .then(async r=>{
         if(!r.ok)return null;
@@ -79,6 +87,14 @@ export function App() {
       .catch(()=>setAuth(null))
       .finally(()=>setChecking(false));
   },[]);
+
+  if(verifyToken){
+    return <VerifyEmailPage token={verifyToken}/>;
+  }
+
+  if(resetToken){
+    return <ResetPasswordPage token={resetToken}/>;
+  }
 
   if(checking){
     return <div className="loading"><div className="spinner"/><span>Sichere Sitzung wird geprüft…</span></div>;
@@ -91,21 +107,51 @@ export function App() {
   return <ProductApp auth={auth} onLogout={()=>setAuth(null)}/>;
 }
 
+function AuthBrandPanel(){
+  return <div className="login-visual">
+    <div className="login-brand"><div className="brand-mark"><Sparkles size={18}/></div><strong>DM Sales AI</strong></div>
+    <div className="login-copy">
+      <span className="eyebrow light">AI SALES AGENT</span>
+      <h1>Aus DMs werden<br/><em>Verkaufsgespräche.</em></h1>
+      <p>Jeder Account besitzt einen eigenen Workspace, einen eigenen AI Agent, eigene Leads und ein eigenes PayPal-Abo.</p>
+      <div className="login-flow"><span><MessageCircle/> Nachricht</span><ChevronRight/><span><BrainCircuit/> Verstehen</span><ChevronRight/><span><Target/> Qualifizieren</span><ChevronRight/><span><CircleDollarSign/> Verkaufen</span></div>
+    </div>
+    <small>Private Workspaces · sichere Server-Sessions · PayPal Billing</small>
+  </div>;
+}
+
 function Login({onAuthenticated}:{onAuthenticated:(value:any)=>void}) {
-  const [mode,setMode]=useState<'login'|'register'>('login');
+  const [mode,setMode]=useState<'login'|'register'|'forgot'>('login');
   const [name,setName]=useState('');
   const [workspaceName,setWorkspaceName]=useState('');
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [error,setError]=useState('');
+  const [notice,setNotice]=useState('');
   const [loading,setLoading]=useState(false);
 
   async function submit(e?:React.FormEvent){
     e?.preventDefault();
     setError('');
+    setNotice('');
     setLoading(true);
 
     try{
+      if(mode==='forgot'){
+        const r=await fetch('/api/auth/forgot-password',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({email}),
+        });
+        const j:any=await r.json();
+        if(!r.ok){
+          setError(j.error||'Anfrage fehlgeschlagen.');
+          return;
+        }
+        setNotice(j.message||'Falls ein Konto existiert, wurde eine E-Mail gesendet.');
+        return;
+      }
+
       const endpoint=mode==='login'?'/api/auth/login':'/api/auth/register';
       const payload=mode==='login'
         ? {email,password}
@@ -127,6 +173,7 @@ function Login({onAuthenticated}:{onAuthenticated:(value:any)=>void}) {
         authenticated:true,
         user:j.user,
         organization:j.organization,
+        verificationRequired:j.verificationRequired,
       });
     }catch{
       setError('Verbindung fehlgeschlagen. Bitte versuche es erneut.');
@@ -135,36 +182,36 @@ function Login({onAuthenticated}:{onAuthenticated:(value:any)=>void}) {
     }
   }
 
-  function switchMode(next:'login'|'register'){
+  function switchMode(next:'login'|'register'|'forgot'){
     setMode(next);
     setError('');
+    setNotice('');
     setPassword('');
   }
 
   return <div className="login-page">
-    <div className="login-visual">
-      <div className="login-brand"><div className="brand-mark"><Sparkles size={18}/></div><strong>DM Sales AI</strong></div>
-      <div className="login-copy">
-        <span className="eyebrow light">AI SALES AGENT</span>
-        <h1>Aus DMs werden<br/><em>Verkaufsgespräche.</em></h1>
-        <p>Jeder Account besitzt einen eigenen Workspace, einen eigenen AI Agent, eigene Leads und ein eigenes PayPal-Abo.</p>
-        <div className="login-flow"><span><MessageCircle/> Nachricht</span><ChevronRight/><span><BrainCircuit/> Verstehen</span><ChevronRight/><span><Target/> Qualifizieren</span><ChevronRight/><span><CircleDollarSign/> Verkaufen</span></div>
-      </div>
-      <small>Private Workspaces · sichere Server-Sessions · PayPal Billing</small>
-    </div>
+    <AuthBrandPanel/>
 
     <div className="login-form-wrap">
       <form className="login-form" onSubmit={submit}>
-        <span className="eyebrow">{mode==='login'?'WORKSPACE LOGIN':'ACCOUNT ERSTELLEN'}</span>
-        <h2>{mode==='login'?'Willkommen zurück':'Dein eigener Workspace'}</h2>
-        <p>{mode==='login'
-          ? 'Melde dich an, um deinen privaten DM Sales AI Workspace zu öffnen.'
-          : 'Erstelle dein Konto. Deine Agent-Einstellungen, Leads und Abos werden getrennt von allen anderen Kunden gespeichert.'}</p>
+        <span className="eyebrow">
+          {mode==='login'?'WORKSPACE LOGIN':mode==='register'?'ACCOUNT ERSTELLEN':'PASSWORT ZURÜCKSETZEN'}
+        </span>
+        <h2>
+          {mode==='login'?'Willkommen zurück':mode==='register'?'Dein eigener Workspace':'Passwort vergessen?'}
+        </h2>
+        <p>
+          {mode==='login'
+            ? 'Melde dich an, um deinen privaten DM Sales AI Workspace zu öffnen.'
+            : mode==='register'
+              ? 'Erstelle dein Konto. Deine Agent-Einstellungen, Leads und Abos werden getrennt von allen anderen Kunden gespeichert.'
+              : 'Gib deine E-Mail-Adresse ein. Falls ein Konto existiert, senden wir dir einen sicheren Reset-Link.'}
+        </p>
 
-        <div className="auth-tabs">
+        {mode!=='forgot'&&<div className="auth-tabs">
           <button type="button" className={mode==='login'?'active':''} onClick={()=>switchMode('login')}>Anmelden</button>
           <button type="button" className={mode==='register'?'active':''} onClick={()=>switchMode('register')}>Registrieren</button>
-        </div>
+        </div>}
 
         {mode==='register'&&<>
           <label><span>Dein Name</span><input autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Max Mustermann" required/></label>
@@ -172,16 +219,157 @@ function Login({onAuthenticated}:{onAuthenticated:(value:any)=>void}) {
         </>}
 
         <label><span>E-Mail</span><input type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@unternehmen.de" required/></label>
-        <label><span>Passwort</span><input type="password" autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder={mode==='register'?'Mind. 10 Zeichen, Buchstabe + Zahl':'Dein Passwort'} required/></label>
+
+        {mode!=='forgot'&&<label>
+          <span>Passwort</span>
+          <input type="password" autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder={mode==='register'?'Mind. 10 Zeichen, Buchstabe + Zahl':'Dein Passwort'} required/>
+        </label>}
+
+        {mode==='login'&&<button type="button" className="forgot-link" onClick={()=>switchMode('forgot')}>Passwort vergessen?</button>}
+
+        {error&&<div className="auth-error">{error}</div>}
+        {notice&&<div className="auth-success">{notice}</div>}
+
+        <button className="primary login-submit" type="submit" disabled={loading}>
+          {loading
+            ? 'Bitte warten…'
+            : mode==='login'
+              ? 'Workspace öffnen'
+              : mode==='register'
+                ? 'Konto erstellen'
+                : 'Reset-Link senden'} <ChevronRight size={16}/>
+        </button>
+
+        {mode==='forgot'&&<button type="button" className="auth-back-link" onClick={()=>switchMode('login')}><ArrowLeft size={14}/> Zurück zur Anmeldung</button>}
+
+        <div className="auth-security"><ShieldCheck size={14}/><span>Passwörter werden gehasht gespeichert. Reset- und Bestätigungslinks sind einmalig und zeitlich begrenzt.</span></div>
+      </form>
+    </div>
+  </div>;
+}
+
+function VerifyEmailPage({token}:{token:string}){
+  const [state,setState]=useState<'loading'|'success'|'error'>('loading');
+  const [message,setMessage]=useState('E-Mail-Adresse wird bestätigt…');
+
+  useEffect(()=>{
+    fetch('/api/auth/verify-email',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token}),
+    })
+      .then(async r=>{
+        const j:any=await r.json();
+        if(!r.ok)throw new Error(j.error||'Bestätigung fehlgeschlagen.');
+        setMessage('Deine E-Mail-Adresse wurde bestätigt.');
+        setState('success');
+      })
+      .catch(error=>{
+        setMessage(error?.message||'Bestätigung fehlgeschlagen.');
+        setState('error');
+      });
+  },[token]);
+
+  return <AuthResultPage
+    title={state==='success'?'E-Mail bestätigt':'E-Mail bestätigen'}
+    message={message}
+    success={state==='success'}
+    loading={state==='loading'}
+    buttonLabel={state==='success'?'Weiter zu DM Sales AI':'Zur Anmeldung'}
+  />;
+}
+
+function ResetPasswordPage({token}:{token:string}){
+  const [password,setPassword]=useState('');
+  const [confirm,setConfirm]=useState('');
+  const [error,setError]=useState('');
+  const [done,setDone]=useState(false);
+  const [loading,setLoading]=useState(false);
+
+  async function submit(e:React.FormEvent){
+    e.preventDefault();
+    setError('');
+
+    if(password!==confirm){
+      setError('Die Passwörter stimmen nicht überein.');
+      return;
+    }
+
+    setLoading(true);
+    try{
+      const r=await fetch('/api/auth/reset-password',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token,password}),
+      });
+      const j:any=await r.json();
+      if(!r.ok){
+        setError(j.error||'Passwort konnte nicht geändert werden.');
+        return;
+      }
+      setDone(true);
+    }catch{
+      setError('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  if(done){
+    return <AuthResultPage
+      title="Passwort geändert"
+      message="Dein neues Passwort ist aktiv. Aus Sicherheitsgründen wurden bestehende Sitzungen beendet."
+      success
+      buttonLabel="Jetzt anmelden"
+    />;
+  }
+
+  return <div className="login-page">
+    <AuthBrandPanel/>
+    <div className="login-form-wrap">
+      <form className="login-form" onSubmit={submit}>
+        <span className="eyebrow">NEUES PASSWORT</span>
+        <h2>Passwort festlegen</h2>
+        <p>Das neue Passwort muss mindestens 10 Zeichen sowie mindestens einen Buchstaben und eine Zahl enthalten.</p>
+
+        <label><span>Neues Passwort</span><input type="password" autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label>
+        <label><span>Passwort wiederholen</span><input type="password" autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} required/></label>
 
         {error&&<div className="auth-error">{error}</div>}
 
         <button className="primary login-submit" type="submit" disabled={loading}>
-          {loading?'Bitte warten…':mode==='login'?'Workspace öffnen':'Konto erstellen'} <ChevronRight size={16}/>
+          {loading?'Bitte warten…':'Passwort speichern'} <ChevronRight size={16}/>
         </button>
-
-        <div className="auth-security"><ShieldCheck size={14}/><span>Passwörter werden gehasht gespeichert. Die Sitzung läuft ausschließlich über ein HttpOnly/Secure Cookie.</span></div>
       </form>
+    </div>
+  </div>;
+}
+
+function AuthResultPage({
+  title,
+  message,
+  success=false,
+  loading=false,
+  buttonLabel,
+}:{
+  title:string,
+  message:string,
+  success?:boolean,
+  loading?:boolean,
+  buttonLabel:string,
+}){
+  function goHome(){
+    window.history.replaceState({},'',window.location.pathname);
+    window.location.href='/';
+  }
+
+  return <div className="auth-result-page">
+    <div className={`auth-result-card ${success?'success':''}`}>
+      <div className="brand-mark"><Sparkles size={20}/></div>
+      <span className="eyebrow">DM SALES AI</span>
+      <h1>{title}</h1>
+      {loading?<div className="spinner"/>:<p>{message}</p>}
+      {!loading&&<button className="primary" onClick={goHome}>{buttonLabel}<ChevronRight size={16}/></button>}
     </div>
   </div>;
 }
@@ -222,6 +410,9 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
   const workspaceInitial=String(data.organization.name||'W').trim().slice(0,1).toUpperCase();
   const billingActive=String(data.billing?.status||'').toLowerCase()==='active';
   const accessGranted=data.access?.granted!==false;
+  const emailVerificationRequired=
+    Boolean(data.access?.emailVerificationEnforced) &&
+    data.access?.emailVerified===false;
 
   function updateBilling(nextBilling:any){
     const nextStatus=String(nextBilling?.status||'').toLowerCase();
@@ -240,6 +431,14 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
         granted:Boolean(data.access?.adminBypass)||!Boolean(data.access?.billingEnforced)||paid,
       },
     });
+  }
+
+  if(emailVerificationRequired){
+    return <EmailVerificationGate
+      user={user}
+      organization={data.organization}
+      onLogout={logout}
+    />;
   }
 
   if(!accessGranted){
@@ -938,6 +1137,70 @@ function Analytics({data}:{data:Bootstrap}){return <><PageHead eyebrow="PERFORMA
 
 function Integrations({instagram}:{instagram:Bootstrap['instagram']}){const [msg,setMsg]=useState('');async function connect(){const r=await fetch('/api/meta/oauth/start',{method:'POST'});const j:any=await r.json();if(j.url){window.location.href=j.url;return;}setMsg(j.error||'Verbindung konnte nicht gestartet werden.')}return <><PageHead eyebrow="INTEGRATIONEN" title="Kanäle verbinden" desc="Hier verbinden deine Kunden später ihre eigenen Accounts."/><div className="integration-card"><div className="instagram-logo"><Instagram/></div><div className="integration-info"><div><h3>Instagram</h3><span className="official">META API</span></div><p>Business- oder Creator-Account verbinden, DMs per Webhook empfangen und Antworten über die offizielle API senden.</p><div className="feature-chips"><span><Check/> DMs</span><span><Check/> Webhooks</span><span><Check/> Kommentar → DM vorbereitet</span></div></div><div className="integration-action"><span className={instagram.connected?'connected':'disconnected'}>{instagram.connected?'Verbunden':'Nicht verbunden'}</span><button className="primary" onClick={connect}><Instagram size={17}/> Instagram verbinden</button></div></div>{msg&&<div className="notice"><ShieldCheck/><div><b>Integration vorbereitet</b><p>{msg}</p></div></div>}<div className="panel setup-steps"><div className="panel-head"><div><b>Was als Nächstes technisch aktiviert wird</b><span>Die App-Oberfläche und Webhook-Endpunkte sind bereits vorbereitet.</span></div></div>{[['1','Meta App anlegen','Instagram API + Webhooks aktivieren'],['2','OAuth konfigurieren','Kunden verbinden ihren Account selbst'],['3','Webhook abonnieren','Neue DMs landen in unserer Conversation Engine'],['4','Send API verbinden','AI-Antworten gehen zurück in Instagram']].map(([n,t,d])=><div className="setup-step" key={n}><i>{n}</i><div><b>{t}</b><span>{d}</span></div></div>)}</div></>}
 
+
+
+function EmailVerificationGate({
+  user,
+  organization,
+  onLogout,
+}:{
+  user:any,
+  organization:any,
+  onLogout:()=>void,
+}){
+  const [sending,setSending]=useState(false);
+  const [message,setMessage]=useState('');
+  const [error,setError]=useState('');
+
+  async function resend(){
+    setSending(true);
+    setMessage('');
+    setError('');
+    try{
+      const r=await fetch('/api/auth/resend-verification',{method:'POST'});
+      const j:any=await r.json();
+      if(!r.ok){
+        setError(j.error||'E-Mail konnte nicht gesendet werden.');
+        return;
+      }
+      setMessage(j.alreadyVerified
+        ? 'Deine E-Mail-Adresse ist bereits bestätigt. Lade die Seite neu.'
+        : 'Bestätigungs-E-Mail wurde erneut gesendet.');
+    }catch{
+      setError('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    }finally{
+      setSending(false);
+    }
+  }
+
+  return <div className="verification-gate-page">
+    <header className="subscription-gate-top">
+      <div className="brand"><div className="brand-mark"><Sparkles size={18}/></div><div><strong>DM Sales AI</strong><span>{organization.name}</span></div></div>
+      <div className="subscription-account">
+        <div><b>{user.name}</b><span>{user.email}</span></div>
+        <button className="secondary" onClick={onLogout}>Abmelden</button>
+      </div>
+    </header>
+
+    <main className="verification-gate-main">
+      <div className="verification-card">
+        <div className="verification-icon"><ShieldCheck size={26}/></div>
+        <span className="eyebrow">E-MAIL BESTÄTIGEN</span>
+        <h1>Fast geschafft.</h1>
+        <p>Wir haben einen Bestätigungslink an <b>{user.email}</b> gesendet. Öffne die E-Mail und bestätige deine Adresse. Danach kannst du mit deinem Workspace weitermachen.</p>
+
+        {message&&<div className="auth-success">{message}</div>}
+        {error&&<div className="auth-error">{error}</div>}
+
+        <div className="verification-actions">
+          <button className="primary" onClick={()=>window.location.reload()}>Status prüfen</button>
+          <button className="secondary" onClick={resend} disabled={sending}>{sending?'Wird gesendet…':'E-Mail erneut senden'}</button>
+        </div>
+        <small>Der Bestätigungslink ist 24 Stunden gültig.</small>
+      </div>
+    </main>
+  </div>;
+}
 
 function SubscriptionGate({
   user,
