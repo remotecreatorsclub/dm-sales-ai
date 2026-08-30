@@ -408,7 +408,15 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
   const user=data.user||auth?.user||{name:'Account Owner',email:'',role:'owner'};
   const initials=String(user.name||user.email||'U').split(/\s+/).filter(Boolean).slice(0,2).map((x:string)=>x[0]?.toUpperCase()).join('')||'U';
   const workspaceInitial=String(data.organization.name||'W').trim().slice(0,1).toUpperCase();
-  const billingActive=String(data.billing?.status||'').toLowerCase()==='active';
+  const billingStatus=String(data.billing?.status||'').toLowerCase();
+  const billingPeriodEnd=Date.parse(String(data.billing?.currentPeriodEnd||''));
+  const billingActive=
+    billingStatus==='active' ||
+    (
+      billingStatus==='cancelled' &&
+      Number.isFinite(billingPeriodEnd) &&
+      billingPeriodEnd>Date.now()
+    );
   const accessGranted=data.access?.granted!==false;
   const emailVerificationRequired=
     Boolean(data.access?.emailVerificationEnforced) &&
@@ -458,7 +466,7 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
       <div className="workspace"><div className="workspace-icon">{workspaceInitial}</div><div><strong>{data.organization.name}</strong><span>{String(data.organization.plan||'starter').toUpperCase()} PLAN</span></div><ChevronRight size={16}/></div>
       <nav>{nav.map(([key,label,Icon]) => <button key={key} className={view === key ? 'active' : ''} onClick={() => {setView(key as View); setMobileNav(false)}}><Icon size={18}/><span>{label}</span>{key==='inbox' && data.conversations.length>0 && <em>{data.conversations.length}</em>}</button>)}</nav>
       <div className="sidebar-bottom">
-        <div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>{Number(data.metrics.conversationsThisMonth||0)} / {String(data.organization.plan).toLowerCase()==='pro'?'5.000':'500'}</b></div><div className="usage-bar"><i style={{width:`${Math.min(100,(Number(data.metrics.conversationsThisMonth||0)/(String(data.organization.plan).toLowerCase()==='pro'?5000:500))*100)}%`}}/></div><small>{String(data.organization.plan||'starter').toUpperCase()} · {billingActive?'Abo aktiv':'Abo nicht aktiv'}</small></div>
+        <div className="usage"><div className="usage-head"><span>AI Konversationen</span><b>{Number(data.metrics.conversationsThisMonth||0)} / {String(data.organization.plan).toLowerCase()==='pro'?'5.000':'500'}</b></div><div className="usage-bar"><i style={{width:`${Math.min(100,(Number(data.metrics.conversationsThisMonth||0)/(String(data.organization.plan).toLowerCase()==='pro'?5000:500))*100)}%`}}/></div><small>{String(data.organization.plan||'starter').toUpperCase()} · {billingStatus==='cancelled'&&billingActive?`gekündigt · Zugang bis ${new Date(String(data.billing?.currentPeriodEnd)).toLocaleDateString('de-DE')}`:billingActive?'Abo aktiv':'Abo nicht aktiv'}</small></div>
         <div className="user"><div className="avatar dark">{initials}</div><div><strong>{user.name||'Account Owner'}</strong><span>{user.email}</span></div><button className="logout-mini" onClick={logout} title="Abmelden">↗</button></div>
       </div>
     </aside>
@@ -1341,11 +1349,24 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
   const status=String(billing?.status||'inactive').toLowerCase();
   const currentPlan=String(billing?.plan||'starter');
   const active=status==='active';
+  const periodEndMs=Date.parse(String(billing?.currentPeriodEnd||''));
+  const cancelledWithAccess=
+    status==='cancelled' &&
+    Number.isFinite(periodEndMs) &&
+    periodEndMs>Date.now();
+  const hasAccess=active||cancelledWithAccess;
+  const paidThroughLabel=cancelledWithAccess
+    ? new Date(periodEndMs).toLocaleDateString('de-DE',{
+        day:'2-digit',
+        month:'2-digit',
+        year:'numeric',
+      })
+    : '';
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const returned=params.get('billing');
-    const shouldSync=returned==='success';
+    const shouldSync=returned==='success'||Boolean(initial?.subscriptionId);
 
     fetch(`/api/paypal/status${shouldSync?'?sync=1':''}`)
       .then(async r=>{
@@ -1403,10 +1424,22 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
       const r=await fetch('/api/paypal/cancel',{method:'POST'});
       const j:any=await r.json();
       if(!r.ok){setMessage(j.error||'Kündigung fehlgeschlagen.');return;}
-      const next={...billing,status:'cancelled'};
+      const next=j.billing||{...billing,status:'cancelled'};
       setBilling(next);
       onBillingChange?.(next);
-      setMessage('Das PayPal-Abo wurde gekündigt.');
+      const end=Date.parse(String(next?.currentPeriodEnd||''));
+      const until=Number.isFinite(end)&&end>Date.now()
+        ? new Date(end).toLocaleDateString('de-DE',{
+            day:'2-digit',
+            month:'2-digit',
+            year:'numeric',
+          })
+        : '';
+      setMessage(
+        until
+          ? `Das Abo ist gekündigt. Dein Zugang bleibt bis ${until} vollständig aktiv. Danach erfolgt keine weitere Abbuchung.`
+          : 'Das PayPal-Abo wurde gekündigt.'
+      );
     }catch{
       setMessage('Verbindung zu PayPal fehlgeschlagen.');
     }finally{
@@ -1417,6 +1450,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
   function planButton(plan:'starter'|'pro'){
     if(!billing?.configured)return <button className="secondary" disabled>PayPal noch nicht konfiguriert</button>;
     if(active&&currentPlan===plan)return <button className="secondary" disabled>Aktueller Plan</button>;
+    if(cancelledWithAccess&&currentPlan===plan)return <button className="secondary" disabled>{`Aktiv bis ${paidThroughLabel}`}</button>;
     const changing=active&&currentPlan!==plan;
     return <button className="primary" onClick={()=>start(plan)} disabled={Boolean(loading)}>
       {loading===plan?'PayPal öffnet…':changing?`Zu ${plan==='pro'?'PRO':'STARTER'} wechseln`:'Mit PayPal abonnieren'}
@@ -1429,11 +1463,21 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
     <div className="billing-status panel">
       <div>
         <span className="eyebrow">ABO-STATUS</span>
-        <h3>{active?`${currentPlan.toUpperCase()} aktiv`:'Kein aktives Abo'}</h3>
-        <p>{billing?.configured?`PayPal ist konfiguriert · ${billing?.mode==='live'?'LIVE':'SANDBOX'}`:'PayPal-Zugangsdaten und Plan IDs müssen noch hinterlegt werden.'}</p>
+        <h3>{active
+          ? `${currentPlan.toUpperCase()} aktiv`
+          : cancelledWithAccess
+            ? `${currentPlan.toUpperCase()} gekündigt`
+            : 'Kein aktives Abo'}</h3>
+        <p>{cancelledWithAccess
+          ? `Bereits bezahlt · voller Zugang bis ${paidThroughLabel} · danach keine weitere Abbuchung`
+          : billing?.configured
+            ? `PayPal ist konfiguriert · ${billing?.mode==='live'?'LIVE':'SANDBOX'}`
+            : 'PayPal-Zugangsdaten und Plan IDs müssen noch hinterlegt werden.'}</p>
       </div>
       <div className="billing-status-actions">
-        <span className={`billing-state ${active?'active':status}`}>{active?'AKTIV':status.toUpperCase()}</span>
+        <span className={`billing-state ${hasAccess?'active':status}`}>
+          {active?'AKTIV':cancelledWithAccess?`AKTIV BIS ${paidThroughLabel}`:status.toUpperCase()}
+        </span>
         {active&&<button className="text-btn danger-text" onClick={cancel} disabled={loading==='cancel'}>{loading==='cancel'?'Wird gekündigt…':'Abo kündigen'}</button>}
       </div>
     </div>
@@ -1441,7 +1485,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
     {message&&<div className="notice billing-notice"><CreditCard/><div><b>PayPal</b><p>{message}</p></div></div>}
 
     <div className="plans">
-      <div className={`plan-card ${active&&currentPlan==='starter'?'current-plan':''}`}>
+      <div className={`plan-card ${hasAccess&&currentPlan==='starter'?'current-plan':''}`}>
         <span>STARTER</span>
         <h3>39 €<small>/ Monat</small></h3>
         <p>Für Solo Creator und kleine Businesses.</p>
@@ -1449,7 +1493,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         {planButton('starter')}
       </div>
 
-      <div className={`plan-card featured ${active&&currentPlan==='pro'?'current-plan':''}`}>
+      <div className={`plan-card featured ${hasAccess&&currentPlan==='pro'?'current-plan':''}`}>
         <span>PRO</span>
         <h3>99 €<small>/ Monat</small></h3>
         <p>Für Creator und Teams mit mehr Volumen.</p>
