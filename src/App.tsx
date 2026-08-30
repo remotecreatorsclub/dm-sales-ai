@@ -31,6 +31,16 @@ type Conversation = {
 type Bootstrap = {
   organization: { name: string; plan: string };
   instagram: { connected: boolean; username: string; status: string };
+  billing?: {
+    provider?: string;
+    plan?: string;
+    status?: string;
+    subscriptionId?: string;
+    currentPeriodEnd?: string;
+    configured?: boolean;
+    webhookConfigured?: boolean;
+    mode?: string;
+  };
   metrics: Record<string, number>;
   conversations: Conversation[];
   agent: Record<string, any>;
@@ -90,7 +100,7 @@ function ProductApp() {
         {view === 'agent' && <Agent initial={data.agent}/>} 
         {view === 'analytics' && <Analytics data={data}/>} 
         {view === 'integrations' && <Integrations instagram={data.instagram}/>} 
-        {view === 'billing' && <Billing/>} 
+        {view === 'billing' && <Billing initial={data.billing}/>}  
         {view === 'settings' && <SettingsPage/>} 
       </div>
     </main>
@@ -659,5 +669,131 @@ function Analytics({data}:{data:Bootstrap}){return <><PageHead eyebrow="PERFORMA
 
 function Integrations({instagram}:{instagram:Bootstrap['instagram']}){const [msg,setMsg]=useState('');async function connect(){const r=await fetch('/api/meta/oauth/start',{method:'POST'});const j:any=await r.json();if(j.url){window.location.href=j.url;return;}setMsg(j.error||'Verbindung konnte nicht gestartet werden.')}return <><PageHead eyebrow="INTEGRATIONEN" title="Kanäle verbinden" desc="Hier verbinden deine Kunden später ihre eigenen Accounts."/><div className="integration-card"><div className="instagram-logo"><Instagram/></div><div className="integration-info"><div><h3>Instagram</h3><span className="official">META API</span></div><p>Business- oder Creator-Account verbinden, DMs per Webhook empfangen und Antworten über die offizielle API senden.</p><div className="feature-chips"><span><Check/> DMs</span><span><Check/> Webhooks</span><span><Check/> Kommentar → DM vorbereitet</span></div></div><div className="integration-action"><span className={instagram.connected?'connected':'disconnected'}>{instagram.connected?'Verbunden':'Nicht verbunden'}</span><button className="primary" onClick={connect}><Instagram size={17}/> Instagram verbinden</button></div></div>{msg&&<div className="notice"><ShieldCheck/><div><b>Integration vorbereitet</b><p>{msg}</p></div></div>}<div className="panel setup-steps"><div className="panel-head"><div><b>Was als Nächstes technisch aktiviert wird</b><span>Die App-Oberfläche und Webhook-Endpunkte sind bereits vorbereitet.</span></div></div>{[['1','Meta App anlegen','Instagram API + Webhooks aktivieren'],['2','OAuth konfigurieren','Kunden verbinden ihren Account selbst'],['3','Webhook abonnieren','Neue DMs landen in unserer Conversation Engine'],['4','Send API verbinden','AI-Antworten gehen zurück in Instagram']].map(([n,t,d])=><div className="setup-step" key={n}><i>{n}</i><div><b>{t}</b><span>{d}</span></div></div>)}</div></>}
 
-function Billing(){return <><PageHead eyebrow="SAAS BILLING" title="Pläne & Nutzung" desc="Die spätere Monetarisierung ist bereits als eigener SaaS-Bereich vorgesehen."/><div className="plans"><div className="plan-card"><span>STARTER</span><h3>39 €<small>/ Monat</small></h3><p>Für Solo Creator und kleine Businesses.</p>{['1 Instagram Account','500 AI-Konversationen','AI Sales Agent','Inbox & Leads','Basis Automationen'].map(x=><div><Check/>{x}</div>)}<button className="secondary">Aktueller Entwurf</button></div><div className="plan-card featured"><span>PRO</span><h3>99 €<small>/ Monat</small></h3><p>Für Creator und Teams mit mehr Volumen.</p>{['3 Instagram Accounts','5.000 AI-Konversationen','Erweiterte Sales Flows','Lead Scoring & Analytics','Human Handoff'].map(x=><div><Check/>{x}</div>)}<button className="primary">PRO Entwurf</button></div></div></>}
+function Billing({initial}:{initial?:Bootstrap['billing']}){
+  const [billing,setBilling]=useState(initial||{});
+  const [loading,setLoading]=useState('');
+  const [message,setMessage]=useState('');
+
+  const status=String(billing?.status||'inactive').toLowerCase();
+  const currentPlan=String(billing?.plan||'starter');
+  const active=status==='active';
+
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const returned=params.get('billing');
+    const shouldSync=returned==='success';
+
+    fetch(`/api/paypal/status${shouldSync?'?sync=1':''}`)
+      .then(async r=>{
+        const j:any=await r.json();
+        if(j.billing)setBilling(j.billing);
+        if(!r.ok&&j.error)setMessage(j.error);
+        if(returned==='success')setMessage('PayPal-Abo bestätigt. Dein Status wurde synchronisiert.');
+        if(returned==='cancelled')setMessage('PayPal-Checkout wurde abgebrochen.');
+      })
+      .catch(()=>setMessage('PayPal-Status konnte gerade nicht geladen werden.'))
+      .finally(()=>{
+        if(returned){
+          params.delete('billing');
+          const query=params.toString();
+          window.history.replaceState({},'',`${window.location.pathname}${query?`?${query}`:''}`);
+        }
+      });
+  },[]);
+
+  async function start(plan:'starter'|'pro'){
+    setLoading(plan);
+    setMessage('');
+    try{
+      const r=await fetch('/api/paypal/subscription',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({plan}),
+      });
+      const j:any=await r.json();
+      if(!r.ok){setMessage(j.error||'PayPal konnte nicht gestartet werden.');return;}
+      if(j.alreadyActive){
+        setBilling(j.billing||billing);
+        setMessage('Dieser Plan ist bereits aktiv.');
+        return;
+      }
+      if(j.approveUrl){
+        window.location.href=j.approveUrl;
+        return;
+      }
+      setMessage('PayPal hat keinen Freigabe-Link zurückgegeben.');
+    }catch{
+      setMessage('Verbindung zu PayPal fehlgeschlagen.');
+    }finally{
+      setLoading('');
+    }
+  }
+
+  async function cancel(){
+    if(!window.confirm('PayPal-Abo wirklich kündigen?'))return;
+    setLoading('cancel');
+    setMessage('');
+    try{
+      const r=await fetch('/api/paypal/cancel',{method:'POST'});
+      const j:any=await r.json();
+      if(!r.ok){setMessage(j.error||'Kündigung fehlgeschlagen.');return;}
+      setBilling({...billing,status:'cancelled'});
+      setMessage('Das PayPal-Abo wurde gekündigt.');
+    }catch{
+      setMessage('Verbindung zu PayPal fehlgeschlagen.');
+    }finally{
+      setLoading('');
+    }
+  }
+
+  function planButton(plan:'starter'|'pro'){
+    if(!billing?.configured)return <button className="secondary" disabled>PayPal noch nicht konfiguriert</button>;
+    if(active&&currentPlan===plan)return <button className="secondary" disabled>Aktueller Plan</button>;
+    const changing=active&&currentPlan!==plan;
+    return <button className="primary" onClick={()=>start(plan)} disabled={Boolean(loading)}>
+      {loading===plan?'PayPal öffnet…':changing?`Zu ${plan==='pro'?'PRO':'STARTER'} wechseln`:'Mit PayPal abonnieren'}
+    </button>;
+  }
+
+  return <>
+    <PageHead eyebrow="PAYPAL BILLING" title="Pläne & Nutzung" desc="Abos laufen vollständig über PayPal. Keine Stripe-Abhängigkeit."/>
+
+    <div className="billing-status panel">
+      <div>
+        <span className="eyebrow">ABO-STATUS</span>
+        <h3>{active?`${currentPlan.toUpperCase()} aktiv`:'Kein aktives Abo'}</h3>
+        <p>{billing?.configured?`PayPal ist konfiguriert · ${billing?.mode==='live'?'LIVE':'SANDBOX'}`:'PayPal-Zugangsdaten und Plan IDs müssen noch hinterlegt werden.'}</p>
+      </div>
+      <div className="billing-status-actions">
+        <span className={`billing-state ${active?'active':status}`}>{active?'AKTIV':status.toUpperCase()}</span>
+        {active&&<button className="text-btn danger-text" onClick={cancel} disabled={loading==='cancel'}>{loading==='cancel'?'Wird gekündigt…':'Abo kündigen'}</button>}
+      </div>
+    </div>
+
+    {message&&<div className="notice billing-notice"><CreditCard/><div><b>PayPal</b><p>{message}</p></div></div>}
+
+    <div className="plans">
+      <div className={`plan-card ${active&&currentPlan==='starter'?'current-plan':''}`}>
+        <span>STARTER</span>
+        <h3>39 €<small>/ Monat</small></h3>
+        <p>Für Solo Creator und kleine Businesses.</p>
+        {['1 Instagram Account','500 AI-Konversationen','AI Sales Agent','Inbox & Leads','Basis Automationen'].map(x=><div key={x}><Check/>{x}</div>)}
+        {planButton('starter')}
+      </div>
+
+      <div className={`plan-card featured ${active&&currentPlan==='pro'?'current-plan':''}`}>
+        <span>PRO</span>
+        <h3>99 €<small>/ Monat</small></h3>
+        <p>Für Creator und Teams mit mehr Volumen.</p>
+        {['3 Instagram Accounts','5.000 AI-Konversationen','Erweiterte Sales Flows','Lead Scoring & Analytics','Human Handoff'].map(x=><div key={x}><Check/>{x}</div>)}
+        {planButton('pro')}
+      </div>
+    </div>
+
+    <div className="paypal-note">
+      <ShieldCheck size={16}/>
+      <div><b>Sichere wiederkehrende Zahlung über PayPal</b><span>PayPal verwaltet Freigabe und monatliche Abbuchungen. Statusänderungen werden per Webhook an DM Sales AI synchronisiert.</span></div>
+    </div>
+  </>
+}
 function SettingsPage(){return <><PageHead eyebrow="WORKSPACE" title="Einstellungen" desc="Workspace, Team, Sicherheit und später die SaaS-Verwaltung."/><div className="panel settings-list">{[['Workspace','Name, Sprache und Standard-Zeitzone'],['Team','Mitarbeiter und Rollen'],['Sicherheit','Sessions, Webhooks und API Secrets'],['Datenschutz','Löschfristen und Datenexport']].map(([a,b])=><button key={a}><div><b>{a}</b><span>{b}</span></div><ChevronRight/></button>)}</div></>}
