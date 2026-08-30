@@ -888,6 +888,7 @@ HARTE REGELN FÜR DIE SICHTBARE DM
 13. Keine erfundenen Fakten, Garantien, falsche Knappheit oder Druck.
 14. Wenn Ziel oder Painpoint gerade erst klar geworden sind, NICHT sofort das Angebot pitchen. Erst noch natürlich qualifizieren.
 15. Wenn der Lead nach Preis/Kosten/Raten/Klarna fragt und Preis/Zahlungsoptionen oben hinterlegt sind, nenne diese KONKRET. Sage niemals "variiert", "kommt darauf an" oder "verschiedene Optionen", wenn ein konkreter Preis hinterlegt ist.
+15a. Bei einer allgemeinen Preisfrage wie "Was kostet das?" nenne nur Einmalpreis und reguläre Ratenzahlung. Klarna erst erwähnen, wenn der Lead nach Klarna fragt oder die Zahlungssituation ausdrücklich weiter vertieft wird.
 16. Bei konkreten Produktfragen wie "Wie verdient man damit?", "Was ist enthalten?" oder "Welche Wege gibt es?" hat die sachlich korrekte Antwort aus der Knowledge Base Vorrang vor einer weiteren Qualifizierungsfrage.
 16a. Bei einer sachlichen Informationsfrage beginne DIREKT mit der Antwort. Kein vorgeschaltetes Lob, keine Validierung und kein Empathie-Füllsatz.
 Beispiel:
@@ -1397,7 +1398,7 @@ async function generateSalesTurn(
   }
 
   if (!naturalReply) return null;
-  turn.reply = naturalReply;
+  turn.reply = sanitizeOutgoingAiText(naturalReply);
   if (!turn.reply || turn.reply === 'ANALYSIS_ONLY') return null;
   return turn;
 }
@@ -1702,6 +1703,37 @@ async function generateValidatedNaturalReply(
   return { reply: finalReply, violation: finalViolation };
 }
 
+function sanitizeOutgoingAiText(value: string) {
+  let text = String(value || '').trim();
+  if (!text) return '';
+
+  // Instagram DMs are plain text. Convert Markdown links to normal URLs.
+  text = text.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_match, label, url) => {
+      const cleanLabel = String(label || '').trim();
+      const cleanUrl = String(url || '').trim();
+      if (!cleanLabel || cleanLabel === cleanUrl || /^https?:\/\//i.test(cleanLabel)) {
+        return cleanUrl;
+      }
+      return `${cleanLabel}: ${cleanUrl}`;
+    },
+  );
+
+  // Remove common Markdown decoration that should never be visible in an Instagram DM.
+  text = text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\\([.!?,;:_-])/g, '$1')
+    .replace(/(\d)\.\s+(\d{3})(?=\D|$)/g, '$1.$2')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return text;
+}
+
 function sentenceCountForDm(value: string) {
   let safe = String(value || '');
 
@@ -1834,6 +1866,14 @@ function naturalReplyViolation(
     if (new RegExp(`\\b${word}\\b`, 'i').test(reply) && !new RegExp(`\\b${word}\\b`, 'i').test(offerText)) {
       return `Du hast die nicht belegte Produktbezeichnung "${word}" erfunden. Nutze ausschließlich die hinterlegten Produktfakten.`;
     }
+  }
+
+  const genericPriceQuestion =
+    /\b(kostet|kosten|preis|wie viel|wieviel)\b/i.test(latestLead) &&
+    !/\b(klarna|rate|raten|ratenzahlung)\b/i.test(latestLead);
+
+  if (genericPriceQuestion && /\bklarna\b/i.test(reply)) {
+    return 'Der Lead hat nur nach dem Preis gefragt. Nenne Einmalpreis und reguläre Ratenzahlung; Klarna erst auf Nachfrage erwähnen.';
   }
 
   const isPriceQuestion = /\b(kostet|kosten|preis|wie viel|wieviel|rate|raten|ratenzahlung|klarna)\b/i.test(latestLead);
@@ -1991,7 +2031,7 @@ async function generateDemoDraft(
     violation = '';
   }
 
-  turn.reply = naturalReply;
+  turn.reply = sanitizeOutgoingAiText(naturalReply);
   if (!turn.reply || turn.reply === 'ANALYSIS_ONLY') return null;
   return turn;
 }
