@@ -3189,6 +3189,51 @@ async function organizationPlan(env: Env, organizationId: string) {
   return String(row?.plan || 'starter');
 }
 
+function addOneCalendarMonth(iso: string) {
+  const source = new Date(iso);
+  if (!Number.isFinite(source.getTime())) return '';
+
+  const year = source.getUTCFullYear();
+  const month = source.getUTCMonth();
+  const day = source.getUTCDate();
+  const hours = source.getUTCHours();
+  const minutes = source.getUTCMinutes();
+  const seconds = source.getUTCSeconds();
+  const milliseconds = source.getUTCMilliseconds();
+
+  const target = new Date(
+    Date.UTC(year, month + 1, 1, hours, minutes, seconds, milliseconds),
+  );
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString();
+}
+
+function paypalPaidThrough(
+  details: any,
+  existingPeriodEnd?: string | null,
+) {
+  const nextBilling = String(details?.billing_info?.next_billing_time || '');
+  if (nextBilling) return nextBilling;
+
+  const existing = String(existingPeriodEnd || '');
+  if (existing) {
+    const parsed = Date.parse(existing);
+    if (Number.isFinite(parsed) && parsed > Date.now()) return existing;
+  }
+
+  // Unsere aktuell verkauften PayPal-Pläne sind monatlich.
+  // Falls PayPal nach CANCELLED kein next_billing_time mehr liefert,
+  // rekonstruieren wir den bezahlten Zeitraum aus der letzten Zahlung.
+  const lastPayment = String(details?.billing_info?.last_payment?.time || '');
+  if (lastPayment) return addOneCalendarMonth(lastPayment);
+
+  return '';
+}
+
 function subscriptionHasEntitlement(subscription: D1Row | null) {
   if (!subscription) return false;
 
@@ -3231,12 +3276,16 @@ async function syncPayPalSubscription(
 ) {
   if (!env.DB || !subscriptionId) return null;
 
+  const existing = await currentPayPalSubscription(env, organizationId);
   const details = await paypalSubscriptionDetails(env, subscriptionId);
   const providerPlanId = String(details?.plan_id || '');
   const plan = paypalPlanFromProviderId(env, providerPlanId);
   const status = String(details?.status || 'UNKNOWN').toLowerCase();
   const payerId = String(details?.subscriber?.payer_id || '');
-  const nextBilling = String(details?.billing_info?.next_billing_time || '');
+  const paidThrough = paypalPaidThrough(
+    details,
+    String(existing?.current_period_end || ''),
+  );
 
   await env.DB
     .prepare(
@@ -3250,7 +3299,12 @@ async function syncPayPalSubscription(
          provider_subscription_id=excluded.provider_subscription_id,
          plan=excluded.plan,
          status=excluded.status,
-         current_period_end=excluded.current_period_end,
+         current_period_end=CASE
+           WHEN excluded.status='cancelled'
+             AND (excluded.current_period_end IS NULL OR excluded.current_period_end='')
+           THEN subscriptions.current_period_end
+           ELSE excluded.current_period_end
+         END,
          updated_at=CURRENT_TIMESTAMP`,
     )
     .bind(
@@ -3261,7 +3315,7 @@ async function syncPayPalSubscription(
       subscriptionId,
       plan,
       status,
-      nextBilling || null,
+      paidThrough || null,
     )
     .run();
 
@@ -3277,7 +3331,7 @@ async function syncPayPalSubscription(
     plan,
     status,
     subscriptionId,
-    currentPeriodEnd: nextBilling,
+    currentPeriodEnd: paidThrough,
     configured: paypalConfigured(env),
     webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
     mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
@@ -3403,6 +3457,13 @@ async function cancelPayPalSubscription(env: Env, organizationId: string) {
     throw new Error('Keine PayPal Subscription gefunden.');
   }
 
+  // Vor der Kündigung den bereits bezahlten Zeitraum sichern.
+  const beforeCancel = await paypalSubscriptionDetails(env, subscriptionId);
+  const paidThrough = paypalPaidThrough(
+    beforeCancel,
+    String(current?.current_period_end || ''),
+  );
+
   await paypalRequest(
     env,
     `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
@@ -3417,14 +3478,33 @@ async function cancelPayPalSubscription(env: Env, organizationId: string) {
     await env.DB
       .prepare(
         `UPDATE subscriptions
-         SET status='cancelled',updated_at=CURRENT_TIMESTAMP
+         SET status='cancelled',
+             current_period_end=COALESCE(NULLIF(?,''),current_period_end),
+             updated_at=CURRENT_TIMESTAMP
          WHERE organization_id=?`,
       )
-      .bind(organizationId)
+      .bind(paidThrough || '', organizationId)
       .run();
   }
 
-  return { cancelled: true, subscriptionId };
+  return {
+    cancelled: true,
+    subscriptionId,
+    billing: {
+      provider: 'paypal',
+      plan: String(
+        current?.plan ||
+        paypalPlanFromProviderId(env, String(beforeCancel?.plan_id || '')),
+      ),
+      status: 'cancelled',
+      subscriptionId,
+      currentPeriodEnd:
+        paidThrough || String(current?.current_period_end || ''),
+      configured: paypalConfigured(env),
+      webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
+      mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+    },
+  };
 }
 
 async function verifyPayPalWebhook(
