@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowLeft, Bot, BrainCircuit, Check, ChevronRight, CircleDollarSign, Clock3, Camera as Instagram,
   LayoutDashboard, ListFilter, MessageCircle, Pause, Play, PlugZap, Search, Send, Settings,
-  Sparkles, Target, Users, Workflow, Zap, ShieldCheck, BarChart3, CreditCard, Menu, X
+  Sparkles, Target, Users, Workflow, Zap, ShieldCheck, BarChart3, CreditCard, Menu, X, Info
 } from 'lucide-react';
 
 type Message = { id: string; from: 'lead' | 'ai' | 'human'; body: string; time: string };
@@ -485,13 +485,175 @@ function Leads({conversations,onOpen}:{conversations:Conversation[],onOpen:(id:s
 
 function Automations(){const items=[['Kommentar → DM','Wenn jemand ein Keyword kommentiert, startet automatisch eine private Unterhaltung.','Coming next'],['DM Keyword','START, PREIS oder INFO startet einen definierten AI Sales Flow.','Coming next'],['Story Reply','Antworten auf Stories werden erkannt und intelligent weitergeführt.','Planned']];return <><PageHead eyebrow="AUTOMATION" title="Trigger & Flows" desc="Die KI übernimmt das Gespräch – Automationen entscheiden, wann es startet." action={<button className="primary"><Zap size={17}/> Automation erstellen</button>}/><div className="automation-grid">{items.map(([t,d,s],i)=><div className="automation-card" key={t}><div className="automation-icon">{i===0?<MessageCircle/>:i===1?<Zap/>:<Instagram/>}</div><span className="coming">{s}</span><h3>{t}</h3><p>{d}</p><div className="flow-preview"><span>Trigger</span><ChevronRight/><span>Private DM</span><ChevronRight/><span className="ai-node"><Sparkles/> AI Agent</span></div><button className="secondary" disabled>Konfigurieren</button></div>)}</div></>}
 
+const agentFieldHelp = {
+  offerName: {
+    info: 'Der Name des Angebots, das dein AI Agent in DMs erklären und verkaufen darf.',
+    example: 'RCC Complete Creator Bundle',
+  },
+  audience: {
+    info: 'Beschreibe möglichst konkret, für wen dein Angebot gedacht ist. Das hilft der KI dabei, den Fit eines Leads besser einzuschätzen.',
+    example: 'Anfänger, die sich ein digitales Online-Business aufbauen möchten.',
+  },
+  productKnowledge: {
+    info: 'Hier stehen die verbindlichen Produktfakten. Bei konkreten Produktfragen darf die KI nur Informationen verwenden, die hier oder in den anderen Angebotsfeldern hinterlegt sind.',
+    example: 'Enthaltene Module, Ablauf, Leistungen, Voraussetzungen, Besonderheiten und wichtige Grenzen des Angebots.',
+  },
+  painPoints: {
+    info: 'Typische Probleme, Unsicherheiten oder Situationen deiner Zielgruppe. Die KI nutzt sie zur Einordnung – nicht um Druck aufzubauen.',
+    example: 'Kein klarer Startpunkt\nTechnik-Überforderung\nFehlende Strategie',
+  },
+  outcomes: {
+    info: 'Welche realistischen Ergebnisse oder Veränderungen soll dein Angebot ermöglichen? Keine Garantien eintragen.',
+    example: 'Klarer Startweg\nEigenes digitales Angebot entwickeln\nVerkaufsprozess verstehen',
+  },
+  objections: {
+    info: 'Häufige Einwände, Fragen oder Bedenken, die Interessenten vor dem Kauf äußern.',
+    example: 'Zu teuer\nKeine Zeit\nZu technisch\nAngst vor einer Fehlinvestition',
+  },
+  tone: {
+    info: 'Definiert den grundsätzlichen Ton deiner Antworten. Der Agent passt sich zusätzlich dem Schreibstil des Leads an.',
+    example: 'Locker, direkt, freundlich, kurze Nachrichten, kein unnötiger Druck.',
+  },
+  voiceExamples: {
+    info: 'Füge echte Beispielnachrichten ein, die so klingen, wie du selbst in Instagram-DMs schreiben würdest. Die KI übernimmt daraus Stil und Rhythmus – keine Produktfakten.',
+    example: 'Lead: „Ich bin noch ganz am Anfang.“\nAntwort: „Okay. Hast du online schon irgendwas ausprobiert oder wirklich noch gar nichts?“',
+  },
+  salesRules: {
+    info: 'Eigene Regeln für deinen Verkaufsprozess. Damit bestimmst du, wie der Agent Gespräche führen soll.',
+    example: 'Direkte Produktfragen immer zuerst beantworten. Nicht nach jeder Nachricht eine Frage stellen.',
+  },
+  guardrails: {
+    info: 'Klare Grenzen, die dein Agent niemals überschreiten darf.',
+    example: 'Keine Garantien. Keine erfundenen Leistungen. Keine künstliche Verknappung. Kein aggressiver Verkaufsdruck.',
+  },
+  price: {
+    info: 'Der reguläre Hauptpreis deines Angebots.',
+    example: '1.197 € einmalig',
+  },
+  paymentPlan: {
+    info: 'Alternative Preis- oder Ratenoptionen. Nur eintragen, was tatsächlich angeboten wird.',
+    example: 'oder 12 × 119 €.',
+  },
+  paymentMethods: {
+    info: 'Zahlungsarten, die für dieses Angebot verfügbar sein können.',
+    example: 'Klarna\nPayPal\nKreditkarte',
+  },
+  paymentHint: {
+    info: 'Ein zusätzlicher Hinweis, den die KI bei passenden Zahlungsfragen verwenden darf.',
+    example: 'Über Klarna können dir – je nach persönlicher Klarna-Auswahl – auch niedrigere Monatsraten angezeigt werden. :)',
+  },
+  showPaymentHintWithPrice: {
+    info: 'Wenn aktiviert, wird dein Zahlungshinweis bereits bei einer allgemeinen Preisfrage direkt mitgenannt.',
+    example: 'Lead: „Was kostet das?“ → Preis + Raten + hinterlegter Klarna-Hinweis.',
+  },
+  checkoutCta: {
+    info: 'Der kurze Text direkt vor dem Checkout-Link, wenn ein Lead klar starten oder kaufen möchte.',
+    example: 'Klar, hier kannst du direkt starten:',
+  },
+  checkoutUrl: {
+    info: 'Der direkte Link zum Checkout deines Angebots. Bei klarer Kaufabsicht kann der Agent diesen Link senden.',
+    example: 'https://www.checkout-anbieter.de/dein-produkt',
+  },
+  bookingUrl: {
+    info: 'Optionaler Link zu einem Gespräch oder Termin. Leer lassen, wenn dein Funnel keinen Termin benötigt.',
+    example: 'https://calendly.com/deinname/strategiegespraech',
+  },
+} as const;
+
+function FieldInfo({label,info,example}:{label:string,info:string,example:string}){
+  return <span
+    className="field-info-wrap"
+    tabIndex={0}
+    role="button"
+    aria-label={`Info zu ${label}`}
+    onClick={(e)=>e.preventDefault()}
+    onKeyDown={(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();}}}
+  >
+    <span className="field-info-icon"><Info size={12}/></span>
+    <span className="field-info-popover" role="tooltip">
+      <b>{label}</b>
+      <span>{info}</span>
+      <em><strong>Beispiel:</strong> {example}</em>
+    </span>
+  </span>
+}
+
+function FieldLabel({label,help}:{label:string,help:{info:string,example:string}}){
+  return <div className="field-label-row">
+    <span className="field-label-text">{label}</span>
+    <FieldInfo label={label} info={help.info} example={help.example}/>
+  </div>
+}
+
 function Agent({initial}:{initial:Record<string,any>}){
  const [form,setForm]=useState(initial); const [saved,setSaved]=useState(false); const change=(k:string,v:any)=>setForm({...form,[k]:v});
  async function save(){await fetch('/api/agent/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});setSaved(true);setTimeout(()=>setSaved(false),1800)}
- return <><PageHead eyebrow="AI SALES BRAIN" title="Dein Sales Agent" desc="Hier bekommt die KI alles, was sie braucht, um natürlich zu qualifizieren und passend zu verkaufen." action={<button className="primary" onClick={save}>{saved?<Check size={17}/>:<Sparkles size={17}/>} {saved?'Gespeichert':'Agent speichern'}</button>}/><div className="agent-layout"><div className="panel form-panel"><div className="form-section"><div className="section-num">01</div><div><h3>Angebot</h3><p>Was darf dein Agent verkaufen?</p></div></div><div className="form-grid"><Field label="Angebotsname" value={form.offerName} onChange={(v)=>change('offerName',v)}/><Field wide label="Zielgruppe" value={form.audience} onChange={(v)=>change('audience',v)}/></div><div className="form-section split"><div className="section-num">02</div><div><h3>Produktwissen / Knowledge Base</h3><p>Hier hinterlegt jeder Kunde die verbindlichen Fakten zu seinem eigenen Angebot.</p></div></div><div className="form-grid"><Area wide label="Produktwissen" value={form.productKnowledge} onChange={(v)=>change('productKnowledge',v)}/></div><div className="form-section split"><div className="section-num">03</div><div><h3>Sales Wissen</h3><p>Damit der Agent nicht generisch antwortet.</p></div></div><div className="form-grid"><Area label="Typische Painpoints" value={form.painPoints} onChange={(v)=>change('painPoints',v)}/><Area label="Gewünschte Ergebnisse" value={form.outcomes} onChange={(v)=>change('outcomes',v)}/><Area label="Einwände" value={form.objections} onChange={(v)=>change('objections',v)}/><Area label="Tonalität" value={form.tone} onChange={(v)=>change('tone',v)}/></div><div className="form-section split"><div className="section-num">04</div><div><h3>Persönlichkeit & Gesprächsstil</h3><p>Je echter die Beispiele, desto näher schreibt die KI wie der Account-Inhaber.</p></div></div><div className="form-grid"><Area wide label="Echte Nachrichten-Beispiele" value={form.voiceExamples} onChange={(v)=>change('voiceExamples',v)}/><Area label="Zusätzliche Sales-Regeln" value={form.salesRules} onChange={(v)=>change('salesRules',v)}/><Area label="Zusätzliche Guardrails" value={form.guardrails} onChange={(v)=>change('guardrails',v)}/></div><div className="form-section split"><div className="section-num">05</div><div><h3>Zahlung & Checkout</h3><p>Alle Zahlungsinformationen gehören zum jeweiligen Angebot und sind frei konfigurierbar.</p></div></div><div className="form-grid"><Field label="Preis" value={form.price} onChange={(v)=>change('price',v)}/><Field label="Raten / Preisoptionen" value={form.paymentPlan} onChange={(v)=>change('paymentPlan',v)}/><Area label="Zahlungsarten" value={form.paymentMethods} onChange={(v)=>change('paymentMethods',v)}/><Area label="Zahlungshinweis" value={form.paymentHint} onChange={(v)=>change('paymentHint',v)}/><label className="wide"><span>Zahlungshinweis bei Preisfrage direkt mitsenden</span><input type="checkbox" checked={Boolean(form.showPaymentHintWithPrice)} onChange={e=>change('showPaymentHintWithPrice',e.target.checked)}/></label><Field wide label="Checkout CTA" value={form.checkoutCta} onChange={(v)=>change('checkoutCta',v)}/></div><div className="form-section split"><div className="section-num">06</div><div><h3>Conversion</h3><p>Wohin soll ein qualifizierter Lead geführt werden?</p></div></div><div className="form-grid"><Field label="Checkout URL" value={form.checkoutUrl} onChange={(v)=>change('checkoutUrl',v)}/><Field label="Termin URL" value={form.bookingUrl} onChange={(v)=>change('bookingUrl',v)}/></div></div><aside className="agent-preview"><div className="agent-orb large"><BrainCircuit/></div><span className="eyebrow">VERHALTEN</span><h3>Sales-Logik</h3><p>Der Agent versteht zuerst den aktuellen Gesprächszug, plant die passende Reaktion und schreibt erst danach die sichtbare DM.</p>{['Situation verstehen','Painpoint konkretisieren','Ziel erkennen','Qualifizieren','Passende Lösung erklären','Einwand behandeln','CTA auslösen'].map((x,i)=><div className="logic" key={x}><i>{i+1}</i><span>{x}</span>{i<6&&<div/>}</div>)}<div className="guardrail"><ShieldCheck/><div><b>Guardrails</b><span>Produktfragen nur aus Knowledge Base · keine erfundenen Fakten · kein Spam · kein unnötiger Druck · Human Takeover respektieren</span></div></div></aside></div></>
+ return <><PageHead eyebrow="AI SALES BRAIN" title="Dein Sales Agent" desc="Hier bekommt die KI alles, was sie braucht, um natürlich zu qualifizieren und passend zu verkaufen." action={<button className="primary" onClick={save}>{saved?<Check size={17}/>:<Sparkles size={17}/>} {saved?'Gespeichert':'Agent speichern'}</button>}/><div className="agent-layout"><div className="panel form-panel">
+
+ <div className="form-section"><div className="section-num">01</div><div><h3>Angebot</h3><p>Was darf dein Agent verkaufen?</p></div></div>
+ <div className="form-grid">
+   <Field label="Angebotsname" help={agentFieldHelp.offerName} value={form.offerName} onChange={(v)=>change('offerName',v)}/>
+   <Field wide label="Zielgruppe" help={agentFieldHelp.audience} value={form.audience} onChange={(v)=>change('audience',v)}/>
+ </div>
+
+ <div className="form-section split"><div className="section-num">02</div><div><h3>Produktwissen / Knowledge Base</h3><p>Hier hinterlegt jeder Kunde die verbindlichen Fakten zu seinem eigenen Angebot.</p></div></div>
+ <div className="form-grid">
+   <Area wide label="Produktwissen" help={agentFieldHelp.productKnowledge} value={form.productKnowledge} onChange={(v)=>change('productKnowledge',v)}/>
+ </div>
+
+ <div className="form-section split"><div className="section-num">03</div><div><h3>Sales Wissen</h3><p>Damit der Agent nicht generisch antwortet.</p></div></div>
+ <div className="form-grid">
+   <Area label="Typische Painpoints" help={agentFieldHelp.painPoints} value={form.painPoints} onChange={(v)=>change('painPoints',v)}/>
+   <Area label="Gewünschte Ergebnisse" help={agentFieldHelp.outcomes} value={form.outcomes} onChange={(v)=>change('outcomes',v)}/>
+   <Area label="Einwände" help={agentFieldHelp.objections} value={form.objections} onChange={(v)=>change('objections',v)}/>
+   <Area label="Tonalität" help={agentFieldHelp.tone} value={form.tone} onChange={(v)=>change('tone',v)}/>
+ </div>
+
+ <div className="form-section split"><div className="section-num">04</div><div><h3>Persönlichkeit & Gesprächsstil</h3><p>Je echter die Beispiele, desto näher schreibt die KI wie der Account-Inhaber.</p></div></div>
+ <div className="form-grid">
+   <Area wide label="Echte Nachrichten-Beispiele" help={agentFieldHelp.voiceExamples} value={form.voiceExamples} onChange={(v)=>change('voiceExamples',v)}/>
+   <Area label="Zusätzliche Sales-Regeln" help={agentFieldHelp.salesRules} value={form.salesRules} onChange={(v)=>change('salesRules',v)}/>
+   <Area label="Zusätzliche Guardrails" help={agentFieldHelp.guardrails} value={form.guardrails} onChange={(v)=>change('guardrails',v)}/>
+ </div>
+
+ <div className="form-section split"><div className="section-num">05</div><div><h3>Zahlung & Checkout</h3><p>Alle Zahlungsinformationen gehören zum jeweiligen Angebot und sind frei konfigurierbar.</p></div></div>
+ <div className="form-grid">
+   <Field label="Preis" help={agentFieldHelp.price} value={form.price} onChange={(v)=>change('price',v)}/>
+   <Field label="Raten / Preisoptionen" help={agentFieldHelp.paymentPlan} value={form.paymentPlan} onChange={(v)=>change('paymentPlan',v)}/>
+   <Area label="Zahlungsarten" help={agentFieldHelp.paymentMethods} value={form.paymentMethods} onChange={(v)=>change('paymentMethods',v)}/>
+   <Area label="Zahlungshinweis" help={agentFieldHelp.paymentHint} value={form.paymentHint} onChange={(v)=>change('paymentHint',v)}/>
+   <div className="field-wrap wide checkbox-field">
+     <FieldLabel label="Zahlungshinweis bei Preisfrage direkt mitsenden" help={agentFieldHelp.showPaymentHintWithPrice}/>
+     <label className="checkbox-control">
+       <input type="checkbox" checked={Boolean(form.showPaymentHintWithPrice)} onChange={e=>change('showPaymentHintWithPrice',e.target.checked)}/>
+       <span>{form.showPaymentHintWithPrice?'Aktiviert':'Deaktiviert'}</span>
+     </label>
+   </div>
+   <Field wide label="Checkout CTA" help={agentFieldHelp.checkoutCta} value={form.checkoutCta} onChange={(v)=>change('checkoutCta',v)}/>
+ </div>
+
+ <div className="form-section split"><div className="section-num">06</div><div><h3>Conversion</h3><p>Wohin soll ein qualifizierter Lead geführt werden?</p></div></div>
+ <div className="form-grid">
+   <Field label="Checkout URL" help={agentFieldHelp.checkoutUrl} value={form.checkoutUrl} onChange={(v)=>change('checkoutUrl',v)}/>
+   <Field label="Termin URL" help={agentFieldHelp.bookingUrl} value={form.bookingUrl} onChange={(v)=>change('bookingUrl',v)}/>
+ </div>
+
+ </div><aside className="agent-preview"><div className="agent-orb large"><BrainCircuit/></div><span className="eyebrow">VERHALTEN</span><h3>Sales-Logik</h3><p>Der Agent versteht zuerst den aktuellen Gesprächszug, plant die passende Reaktion und schreibt erst danach die sichtbare DM.</p>{['Situation verstehen','Painpoint konkretisieren','Ziel erkennen','Qualifizieren','Passende Lösung erklären','Einwand behandeln','CTA auslösen'].map((x,i)=><div className="logic" key={x}><i>{i+1}</i><span>{x}</span>{i<6&&<div/>}</div>)}<div className="guardrail"><ShieldCheck/><div><b>Guardrails</b><span>Produktfragen nur aus Knowledge Base · keine erfundenen Fakten · kein Spam · kein unnötiger Druck · Human Takeover respektieren</span></div></div></aside></div></>
 }
-function Field({label,value,onChange,wide}:{label:string,value:string,onChange:(v:string)=>void,wide?:boolean}){return <label className={wide?'wide':''}><span>{label}</span><input value={value||''} onChange={e=>onChange(e.target.value)}/></label>}
-function Area({label,value,onChange,wide}:{label:string,value:string,onChange:(v:string)=>void,wide?:boolean}){return <label className={wide?'wide':''}><span>{label}</span><textarea value={value||''} onChange={e=>onChange(e.target.value)}/></label>}
+
+function Field({label,value,onChange,wide,help}:{label:string,value:string,onChange:(v:string)=>void,wide?:boolean,help:{info:string,example:string}}){
+ return <div className={`field-wrap ${wide?'wide':''}`}>
+   <FieldLabel label={label} help={help}/>
+   <input value={value||''} onChange={e=>onChange(e.target.value)}/>
+ </div>
+}
+
+function Area({label,value,onChange,wide,help}:{label:string,value:string,onChange:(v:string)=>void,wide?:boolean,help:{info:string,example:string}}){
+ return <div className={`field-wrap ${wide?'wide':''}`}>
+   <FieldLabel label={label} help={help}/>
+   <textarea value={value||''} onChange={e=>onChange(e.target.value)}/>
+ </div>
+}
 
 function Analytics({data}:{data:Bootstrap}){return <><PageHead eyebrow="PERFORMANCE" title="Analytics" desc="Nicht nur Nachrichten zählen – sondern verstehen, wo Gespräche zu Käufen werden."/><section className="metrics">{[['Conversion Rate','4,3%'],['Ø Lead Score','63%'],['Antwortzeit','8 Sek.'],['AI Takeover','91%']].map(([a,b])=><div className="metric" key={a}><strong>{b}</strong><span>{a}</span></div>)}</section><div className="panel chart-panel"><div className="panel-head"><div><b>Sales Funnel</b><span>Demo-Daten · letzte 30 Tage</span></div></div><div className="big-bars">{[['Neue Gespräche',428,100],['Painpoint erkannt',286,67],['Qualifiziert',166,39],['Hot Lead',81,19],['Checkout',54,13],['Verkauf',18,4]].map(([l,n,w]:any)=><div key={l}><span>{l}</span><div><i style={{width:`${w}%`}}/></div><b>{n}</b></div>)}</div></div></>}
 
