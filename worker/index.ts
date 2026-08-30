@@ -24,6 +24,18 @@ interface Env {
 
 type D1Row = Record<string, any>;
 
+type AuthContext = {
+  sessionId: string;
+  userId: string;
+  email: string;
+  userName: string;
+  organizationId: string;
+  organizationName: string;
+  organizationPlan: string;
+  role: string;
+};
+
+
 type SalesTurn = {
   reply: string;
   stage: 'discovery' | 'painpoint' | 'goal' | 'qualification' | 'solution' | 'objection' | 'close';
@@ -445,8 +457,542 @@ async function decryptToken(value: string, keyB64: string) {
   return decoder.decode(plain);
 }
 
-async function bootstrap(env: Env) {
+
+const SESSION_COOKIE = 'dm_sales_session';
+const SESSION_DAYS = 30;
+const PASSWORD_ITERATIONS = 600_000;
+
+function normalizeEmail(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function randomToken(bytes = 32) {
+  const raw = crypto.getRandomValues(new Uint8Array(bytes));
+  return b64(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function passwordHash(password: string, saltB64: string) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: unb64(saltB64),
+      iterations: PASSWORD_ITERATIONS,
+    },
+    baseKey,
+    256,
+  );
+
+  return b64(new Uint8Array(bits));
+}
+
+async function makePassword(password: string) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltB64 = b64(salt);
+  return {
+    salt: saltB64,
+    hash: await passwordHash(password, saltB64),
+  };
+}
+
+function secureEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+function sessionCookie(token: string, maxAgeSeconds = SESSION_DAYS * 24 * 60 * 60) {
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+}
+
+function clearSessionCookie() {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+function workspaceSlug(name: string) {
+  const base = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'workspace';
+  return `${base}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+async function createSession(
+  env: Env,
+  userId: string,
+  organizationId: string,
+) {
+  if (!env.DB) throw new Error('Datenbank nicht verfügbar.');
+
+  const token = randomToken(32);
+  const tokenHash = await sha256Hex(token);
+  const id = crypto.randomUUID();
+  const expiresAt = new Date(
+    Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  await env.DB
+    .prepare(
+      `INSERT INTO sessions
+        (id,user_id,organization_id,token_hash,expires_at,last_seen_at)
+       VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)`,
+    )
+    .bind(id, userId, organizationId, tokenHash, expiresAt)
+    .run();
+
+  return { token, id, expiresAt };
+}
+
+async function authContext(request: Request, env: Env): Promise<AuthContext | null> {
+  if (!env.DB) return null;
+
+  const token = cookie(request, SESSION_COOKIE);
+  if (!token) return null;
+
+  const tokenHash = await sha256Hex(token);
+  const row = await env.DB
+    .prepare(
+      `SELECT
+         s.id AS session_id,
+         s.user_id,
+         s.organization_id,
+         u.email,
+         u.name AS user_name,
+         o.name AS organization_name,
+         o.plan AS organization_plan,
+         m.role
+       FROM sessions s
+       JOIN users u ON u.id=s.user_id
+       JOIN organizations o ON o.id=s.organization_id
+       JOIN memberships m
+         ON m.user_id=s.user_id
+        AND m.organization_id=s.organization_id
+       WHERE s.token_hash=?
+         AND s.expires_at > CURRENT_TIMESTAMP
+         AND COALESCE(u.disabled,0)=0
+       LIMIT 1`,
+    )
+    .bind(tokenHash)
+    .first<D1Row>();
+
+  if (!row) return null;
+
+  // Last-seen is intentionally best effort and does not block requests.
+  env.DB
+    .prepare('UPDATE sessions SET last_seen_at=CURRENT_TIMESTAMP WHERE id=?')
+    .bind(row.session_id)
+    .run()
+    .catch(() => undefined);
+
+  return {
+    sessionId: String(row.session_id),
+    userId: String(row.user_id),
+    email: String(row.email || ''),
+    userName: String(row.user_name || ''),
+    organizationId: String(row.organization_id),
+    organizationName: String(row.organization_name || 'Workspace'),
+    organizationPlan: String(row.organization_plan || 'starter'),
+    role: String(row.role || 'owner'),
+  };
+}
+
+async function registerUser(
+  request: Request,
+  env: Env,
+) {
+  if (!env.DB) {
+    return json({ error: 'D1 Datenbank fehlt.' }, { status: 503 });
+  }
+
+  const body = await request.json<{
+    name?: string;
+    email?: string;
+    password?: string;
+    workspaceName?: string;
+  }>();
+
+  const name = String(body.name || '').trim();
+  const email = normalizeEmail(body.email);
+  const password = String(body.password || '');
+  const workspaceName =
+    String(body.workspaceName || '').trim() ||
+    (name ? `${name}s Workspace` : 'Mein Workspace');
+
+  if (name.length < 2) {
+    return json({ error: 'Bitte gib deinen Namen ein.' }, { status: 400 });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ error: 'Bitte gib eine gültige E-Mail-Adresse ein.' }, { status: 400 });
+  }
+  if (password.length < 10) {
+    return json({ error: 'Das Passwort muss mindestens 10 Zeichen lang sein.' }, { status: 400 });
+  }
+  if (!/[A-Za-zÄÖÜäöüß]/.test(password) || !/\d/.test(password)) {
+    return json(
+      { error: 'Das Passwort muss mindestens einen Buchstaben und eine Zahl enthalten.' },
+      { status: 400 },
+    );
+  }
+  if (workspaceName.length < 2 || workspaceName.length > 80) {
+    return json({ error: 'Der Workspace-Name muss 2–80 Zeichen lang sein.' }, { status: 400 });
+  }
+
+  const existing = await env.DB
+    .prepare('SELECT id FROM users WHERE email=? LIMIT 1')
+    .bind(email)
+    .first<D1Row>();
+
+  if (existing) {
+    return json(
+      { error: 'Für diese E-Mail-Adresse existiert bereits ein Konto.' },
+      { status: 409 },
+    );
+  }
+
+  const userId = crypto.randomUUID();
+  const organizationId = crypto.randomUUID();
+  const { salt, hash } = await makePassword(password);
+
+  try {
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          `INSERT INTO users
+            (id,email,name,password_hash,password_salt)
+           VALUES (?,?,?,?,?)`,
+        )
+        .bind(userId, email, name, hash, salt),
+      env.DB
+        .prepare(
+          `INSERT INTO organizations
+            (id,name,slug,plan)
+           VALUES (?,?,?,'starter')`,
+        )
+        .bind(organizationId, workspaceName, workspaceSlug(workspaceName)),
+      env.DB
+        .prepare(
+          `INSERT INTO memberships
+            (organization_id,user_id,role)
+           VALUES (?,?,'owner')`,
+        )
+        .bind(organizationId, userId),
+      env.DB
+        .prepare(
+          `INSERT INTO ai_agents
+            (id,organization_id,name,active,tone)
+           VALUES (?,?,'Sales Agent',1,'Natürlich, direkt, freundlich. Kurze Nachrichten. Nie drängen.')`,
+        )
+        .bind(crypto.randomUUID(), organizationId),
+    ]);
+  } catch (error: any) {
+    console.error('Registration failed:', error?.message || error);
+    return json(
+      { error: 'Konto konnte nicht erstellt werden.' },
+      { status: 500 },
+    );
+  }
+
+  const session = await createSession(env, userId, organizationId);
+
+  return json(
+    {
+      ok: true,
+      user: { id: userId, name, email, role: 'owner' },
+      organization: {
+        id: organizationId,
+        name: workspaceName,
+        plan: 'starter',
+      },
+    },
+    {
+      status: 201,
+      headers: { 'Set-Cookie': sessionCookie(session.token) },
+    },
+  );
+}
+
+async function loginUser(request: Request, env: Env) {
+  if (!env.DB) {
+    return json({ error: 'D1 Datenbank fehlt.' }, { status: 503 });
+  }
+
+  const body = await request.json<{ email?: string; password?: string }>();
+  const email = normalizeEmail(body.email);
+  const password = String(body.password || '');
+
+  if (!email || !password) {
+    return json({ error: 'E-Mail und Passwort fehlen.' }, { status: 400 });
+  }
+
+  const user = await env.DB
+    .prepare(
+      `SELECT id,email,name,password_hash,password_salt,COALESCE(disabled,0) AS disabled
+       FROM users
+       WHERE email=?
+       LIMIT 1`,
+    )
+    .bind(email)
+    .first<D1Row>();
+
+  if (
+    !user ||
+    user.disabled ||
+    !user.password_hash ||
+    !user.password_salt
+  ) {
+    // Keep error intentionally generic.
+    return json({ error: 'E-Mail oder Passwort ist falsch.' }, { status: 401 });
+  }
+
+  const candidate = await passwordHash(password, String(user.password_salt));
+  if (!secureEqual(candidate, String(user.password_hash))) {
+    return json({ error: 'E-Mail oder Passwort ist falsch.' }, { status: 401 });
+  }
+
+  const membership = await env.DB
+    .prepare(
+      `SELECT m.organization_id,m.role,o.name,o.plan
+       FROM memberships m
+       JOIN organizations o ON o.id=m.organization_id
+       WHERE m.user_id=?
+       ORDER BY m.created_at ASC
+       LIMIT 1`,
+    )
+    .bind(user.id)
+    .first<D1Row>();
+
+  if (!membership) {
+    return json({ error: 'Für dieses Konto wurde kein Workspace gefunden.' }, { status: 403 });
+  }
+
+  const session = await createSession(
+    env,
+    String(user.id),
+    String(membership.organization_id),
+  );
+
+  await env.DB
+    .prepare('UPDATE users SET last_login_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .bind(user.id)
+    .run();
+
+  return json(
+    {
+      ok: true,
+      user: {
+        id: String(user.id),
+        name: String(user.name || ''),
+        email: String(user.email || ''),
+        role: String(membership.role || 'owner'),
+      },
+      organization: {
+        id: String(membership.organization_id),
+        name: String(membership.name || 'Workspace'),
+        plan: String(membership.plan || 'starter'),
+      },
+    },
+    { headers: { 'Set-Cookie': sessionCookie(session.token) } },
+  );
+}
+
+async function logoutUser(request: Request, env: Env) {
+  if (env.DB) {
+    const token = cookie(request, SESSION_COOKIE);
+    if (token) {
+      const tokenHash = await sha256Hex(token);
+      await env.DB
+        .prepare('DELETE FROM sessions WHERE token_hash=?')
+        .bind(tokenHash)
+        .run()
+        .catch(() => undefined);
+    }
+  }
+
+  return json(
+    { ok: true },
+    { headers: { 'Set-Cookie': clearSessionCookie() } },
+  );
+}
+
+function displayDbTime(value: unknown) {
+  const raw = String(value || '');
+  if (!raw) return '';
+  const time = raw.match(/(?:T|\s)(\d{2}:\d{2})/);
+  return time?.[1] || raw;
+}
+
+async function workspaceConversations(env: Env, organizationId: string) {
+  if (!env.DB) return [];
+
+  const rows = await env.DB
+    .prepare(
+      `SELECT
+         c.id,
+         c.ai_mode,
+         c.current_stage,
+         c.last_message_at,
+         l.username,
+         l.display_name,
+         l.external_user_id,
+         l.stage,
+         l.temperature,
+         l.score,
+         l.goal,
+         l.pain_point,
+         l.experience,
+         l.budget,
+         l.objection,
+         l.summary,
+         l.memory_json,
+         l.style_profile_json
+       FROM conversations c
+       JOIN leads l ON l.id=c.lead_id
+       WHERE c.organization_id=?
+       ORDER BY COALESCE(c.last_message_at,c.updated_at) DESC
+       LIMIT 100`,
+    )
+    .bind(organizationId)
+    .all<D1Row>();
+
+  const conversations: any[] = [];
+
+  for (const row of rows.results || []) {
+    const messageRows = await env.DB
+      .prepare(
+        `SELECT id,direction,sender_type,body,created_at
+         FROM messages
+         WHERE conversation_id=? AND organization_id=?
+         ORDER BY created_at ASC
+         LIMIT 200`,
+      )
+      .bind(row.id, organizationId)
+      .all<D1Row>();
+
+    const messages = (messageRows.results || []).map((message) => ({
+      id: String(message.id),
+      from:
+        message.direction === 'inbound'
+          ? 'lead'
+          : message.sender_type === 'human'
+            ? 'human'
+            : 'ai',
+      body: String(message.body || ''),
+      time: displayDbTime(message.created_at),
+    }));
+
+    const memory: any = parseJsonObject(row.memory_json);
+    const style: any = parseJsonObject(row.style_profile_json);
+    const displayName =
+      String(row.display_name || row.username || '').trim() || 'Instagram Lead';
+    const username = String(row.username || '').trim();
+    const externalUserId = String(row.external_user_id || '').trim();
+
+    conversations.push({
+      id: String(row.id),
+      name: displayName,
+      username: username ? `@${username.replace(/^@/, '')}` : externalUserId,
+      avatar: displayName.slice(0, 1).toUpperCase() || 'L',
+      score: Number(row.score || 0),
+      temperature: String(row.temperature || 'cold'),
+      stage: String(row.stage || row.current_stage || 'discovery'),
+      aiMode: row.ai_mode === 'paused' ? 'paused' : 'active',
+      lastMessage: messages.at(-1)?.body || '',
+      time: displayDbTime(row.last_message_at),
+      goal: String(row.goal || 'Unklar'),
+      painPoint: String(row.pain_point || 'Unklar'),
+      experience: String(row.experience || 'Unklar'),
+      budget: String(row.budget || 'Unklar'),
+      objection: String(row.objection || 'Unklar'),
+      summary: String(row.summary || ''),
+      knownFacts: String(memory.knownFacts || memory.known_facts || ''),
+      openQuestions: String(memory.openQuestions || memory.open_questions || ''),
+      nextStep: String(memory.nextStep || memory.next_step || ''),
+      styleProfile: style,
+      messages,
+    });
+  }
+
+  return conversations;
+}
+
+async function workspaceMetrics(env: Env, organizationId: string) {
+  if (!env.DB) {
+    return {
+      conversationsToday: 0,
+      qualifiedLeads: 0,
+      hotLeads: 0,
+      checkoutSent: 0,
+      conversions: 0,
+    };
+  }
+
+  const row = await env.DB
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM conversations
+          WHERE organization_id=? AND date(created_at)=date('now')) AS conversations_today,
+         (SELECT COUNT(*) FROM leads
+          WHERE organization_id=? AND stage IN ('qualification','solution','objection','close')) AS qualified_leads,
+         (SELECT COUNT(*) FROM leads
+          WHERE organization_id=? AND temperature='hot') AS hot_leads`,
+    )
+    .bind(organizationId, organizationId, organizationId)
+    .first<D1Row>();
+
+  return {
+    conversationsToday: Number(row?.conversations_today || 0),
+    qualifiedLeads: Number(row?.qualified_leads || 0),
+    hotLeads: Number(row?.hot_leads || 0),
+    checkoutSent: 0,
+    conversions: 0,
+  };
+}
+
+async function bootstrap(
+  env: Env,
+  auth: AuthContext,
+) {
   const data = structuredClone(demoBootstrap) as any;
+
+  data.user = {
+    id: auth.userId,
+    name: auth.userName,
+    email: auth.email,
+    role: auth.role,
+  };
+  data.organization = {
+    id: auth.organizationId,
+    name: auth.organizationName,
+    plan: auth.organizationPlan,
+  };
+  data.instagram = {
+    connected: false,
+    username: '',
+    status: 'Nicht verbunden',
+  };
+  data.metrics = await workspaceMetrics(env, auth.organizationId);
+  data.conversations = await workspaceConversations(env, auth.organizationId);
 
   if (!env.DB) return data;
 
@@ -454,7 +1000,7 @@ async function bootstrap(env: Env) {
     .prepare(
       'SELECT username,status FROM instagram_accounts WHERE organization_id=? ORDER BY connected_at DESC LIMIT 1',
     )
-    .bind(DEMO_ORG)
+    .bind(auth.organizationId)
     .first<D1Row>();
 
   if (account) {
@@ -469,7 +1015,7 @@ async function bootstrap(env: Env) {
     .prepare(
       'SELECT * FROM ai_agents WHERE organization_id=? ORDER BY updated_at DESC LIMIT 1',
     )
-    .bind(DEMO_ORG)
+    .bind(auth.organizationId)
     .first<D1Row>();
 
   if (agent) {
@@ -504,12 +1050,12 @@ async function bootstrap(env: Env) {
        WHERE organization_id=?
        LIMIT 1`,
     )
-    .bind(DEMO_ORG)
+    .bind(auth.organizationId)
     .first<D1Row>();
 
   data.billing = {
     provider: subscription?.provider || 'paypal',
-    plan: subscription?.plan || 'starter',
+    plan: subscription?.plan || auth.organizationPlan || 'starter',
     status: subscription?.status || 'inactive',
     subscriptionId: subscription?.provider_subscription_id || '',
     currentPeriodEnd: subscription?.current_period_end || '',
@@ -519,23 +1065,19 @@ async function bootstrap(env: Env) {
       env.PAYPAL_STARTER_PLAN_ID &&
       env.PAYPAL_PRO_PLAN_ID
     ),
+    webhookConfigured: Boolean(env.PAYPAL_WEBHOOK_ID),
     mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
   };
 
   return data;
 }
 
-async function saveAgent(env: Env, body: Record<string, unknown>) {
+async function saveAgent(env: Env, organizationId: string, body: Record<string, unknown>) {
   if (!env.DB) return;
-
-  await env.DB
-    .prepare("INSERT OR IGNORE INTO organizations (id,name,slug,plan) VALUES (?,?,?,'pro')")
-    .bind(DEMO_ORG, 'Demo Workspace', 'demo-workspace')
-    .run();
 
   const existing = await env.DB
     .prepare('SELECT id FROM ai_agents WHERE organization_id=? LIMIT 1')
-    .bind(DEMO_ORG)
+    .bind(organizationId)
     .first<D1Row>();
 
   const values = [
@@ -573,7 +1115,7 @@ async function saveAgent(env: Env, body: Record<string, unknown>) {
       .prepare(
         'INSERT INTO ai_agents (id,organization_id,name,active,offer_name,offer_description,price_text,payment_plan_text,payment_methods,payment_hint,show_payment_hint_with_price,checkout_cta_text,audience,pain_points,outcomes,objections,checkout_url,booking_url,tone,system_instructions,qualification_rules,guardrails) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       )
-      .bind(crypto.randomUUID(), DEMO_ORG, ...values)
+      .bind(crypto.randomUUID(), organizationId, ...values)
       .run();
   }
 }
@@ -1486,14 +2028,14 @@ async function generateSalesTurn(
   return turn;
 }
 
-async function activeDemoAgent(env: Env): Promise<D1Row> {
+async function activeWorkspaceAgent(env: Env, organizationId: string): Promise<D1Row> {
   if (env.DB) {
     try {
       const saved = await env.DB
         .prepare(
           'SELECT * FROM ai_agents WHERE organization_id=? AND active=1 ORDER BY updated_at DESC LIMIT 1',
         )
-        .bind(DEMO_ORG)
+        .bind(organizationId)
         .first<D1Row>();
 
       if (saved) return saved;
@@ -2000,6 +2542,7 @@ function naturalReplyViolation(
 
 async function generateDemoDraft(
   env: Env,
+  organizationId: string,
   body: {
     stage?: string;
     painPoint?: string;
@@ -2010,7 +2553,7 @@ async function generateDemoDraft(
     styleProfile?: Record<string, unknown>;
   },
 ) {
-  const agent = await activeDemoAgent(env);
+  const agent = await activeWorkspaceAgent(env, organizationId);
   const memory = body.leadMemory || {};
   const style = body.styleProfile || {};
 
@@ -2379,6 +2922,7 @@ async function createOrRevisePayPalSubscription(
         method: 'POST',
         body: JSON.stringify({
           plan_id: targetPlanId,
+          custom_id: organizationId,
           application_context: {
             brand_name: 'DM Sales AI',
             user_action: 'SUBSCRIBE_NOW',
@@ -2514,6 +3058,31 @@ async function handlePayPalWebhook(request: Request, env: Env) {
     return new Response('Webhook verification failed', { status: 401 });
   }
 
+  const eventType = String(payload?.event_type || '');
+  const resource = payload?.resource || {};
+  let subscriptionId = '';
+
+  if (eventType.startsWith('BILLING.SUBSCRIPTION.')) {
+    subscriptionId = String(resource?.id || '');
+  } else if (eventType.startsWith('PAYMENT.SALE.')) {
+    subscriptionId = String(resource?.billing_agreement_id || '');
+  }
+
+  let organizationId = String(resource?.custom_id || '').trim();
+
+  if (!organizationId && env.DB && subscriptionId) {
+    const existing = await env.DB
+      .prepare(
+        `SELECT organization_id
+         FROM subscriptions
+         WHERE provider='paypal' AND provider_subscription_id=?
+         LIMIT 1`,
+      )
+      .bind(subscriptionId)
+      .first<D1Row>();
+    organizationId = String(existing?.organization_id || '');
+  }
+
   if (env.DB && payload?.id) {
     const inserted = await env.DB
       .prepare(
@@ -2525,7 +3094,7 @@ async function handlePayPalWebhook(request: Request, env: Env) {
         crypto.randomUUID(),
         'paypal',
         String(payload.id),
-        DEMO_ORG,
+        organizationId || null,
         raw,
       )
       .run();
@@ -2535,19 +3104,9 @@ async function handlePayPalWebhook(request: Request, env: Env) {
     }
   }
 
-  const eventType = String(payload?.event_type || '');
-  const resource = payload?.resource || {};
-  let subscriptionId = '';
-
-  if (eventType.startsWith('BILLING.SUBSCRIPTION.')) {
-    subscriptionId = String(resource?.id || '');
-  } else if (eventType.startsWith('PAYMENT.SALE.')) {
-    subscriptionId = String(resource?.billing_agreement_id || '');
-  }
-
-  if (subscriptionId) {
+  if (subscriptionId && organizationId) {
     try {
-      await syncPayPalSubscription(env, DEMO_ORG, subscriptionId);
+      await syncPayPalSubscription(env, organizationId, subscriptionId);
     } catch (error: any) {
       console.error('PayPal subscription sync failed:', error?.message || error);
     }
@@ -2644,7 +3203,7 @@ async function subscribeInstagramWebhooks(
   return payload;
 }
 
-function oauthStart(request: Request, env: Env) {
+function oauthStart(request: Request, env: Env, organizationId: string) {
   if (!env.META_APP_ID) {
     return json(
       { error: 'META_APP_ID fehlt noch. Trage die Meta-App-ID als Worker-Variable ein.' },
@@ -2667,18 +3226,26 @@ function oauthStart(request: Request, env: Env) {
     { url: `https://www.instagram.com/oauth/authorize?${params}` },
     {
       headers: {
-        'Set-Cookie': `ig_oauth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
+        'Set-Cookie': `ig_oauth_state=${state}.${organizationId}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
       },
     },
   );
 }
 
-async function oauthCallback(request: Request, env: Env) {
+async function oauthCallback(request: Request, env: Env, organizationId: string) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
 
-  if (!code || !state || state !== cookie(request, 'ig_oauth_state')) {
+  const oauthCookie = cookie(request, 'ig_oauth_state') || '';
+  const [storedState, storedOrg] = oauthCookie.split('.');
+
+  if (
+    !code ||
+    !state ||
+    state !== storedState ||
+    storedOrg !== organizationId
+  ) {
     return new Response('Ungültiger OAuth-State.', { status: 400 });
   }
 
@@ -2764,11 +3331,6 @@ async function oauthCallback(request: Request, env: Env) {
     ).toISOString();
 
     await env.DB
-      .prepare("INSERT OR IGNORE INTO organizations (id,name,slug,plan) VALUES (?,?,?,'pro')")
-      .bind(DEMO_ORG, 'Demo Workspace', 'demo-workspace')
-      .run();
-
-    await env.DB
       .prepare(
         `INSERT INTO instagram_accounts
           (id,organization_id,instagram_user_id,username,access_token_encrypted,token_expires_at,status,connected_at)
@@ -2784,7 +3346,7 @@ async function oauthCallback(request: Request, env: Env) {
       )
       .bind(
         crypto.randomUUID(),
-        DEMO_ORG,
+        organizationId,
         String(profile.id),
         String(profile.username || 'instagram'),
         encrypted,
@@ -3198,7 +3760,7 @@ async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext)
   return json({ received: true });
 }
 
-async function manualReply(env: Env, conversationId: string, message: string) {
+async function manualReply(env: Env, organizationId: string, conversationId: string, message: string) {
   if (!env.DB) {
     return {
       sent: true,
@@ -3218,10 +3780,10 @@ async function manualReply(env: Env, conversationId: string, message: string) {
        FROM conversations c
        JOIN leads l ON l.id=c.lead_id
        JOIN instagram_accounts ia ON ia.id=c.instagram_account_id
-       WHERE c.id=?
+       WHERE c.id=? AND c.organization_id=?
        LIMIT 1`,
     )
-    .bind(conversationId)
+    .bind(conversationId, organizationId)
     .first<D1Row>();
 
   if (!row) {
@@ -3304,8 +3866,69 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     });
   }
 
+  if (path === '/api/auth/register' && request.method === 'POST') {
+    return registerUser(request, env);
+  }
+
+  if (path === '/api/auth/login' && request.method === 'POST') {
+    return loginUser(request, env);
+  }
+
+  if (path === '/api/auth/logout' && request.method === 'POST') {
+    return logoutUser(request, env);
+  }
+
+  // Provider webhooks must stay public. They verify their own signatures.
+  if (path === '/api/paypal/webhook' && request.method === 'POST') {
+    return handlePayPalWebhook(request, env);
+  }
+
+  if (path === '/api/meta/webhook' && request.method === 'GET') {
+    const mode = url.searchParams.get('hub.mode');
+    const token = url.searchParams.get('hub.verify_token');
+    const challenge = url.searchParams.get('hub.challenge');
+
+    if (
+      mode === 'subscribe' &&
+      env.META_VERIFY_TOKEN &&
+      token === env.META_VERIFY_TOKEN &&
+      challenge
+    ) {
+      return new Response(challenge);
+    }
+
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  if (path === '/api/meta/webhook' && request.method === 'POST') {
+    return handleWebhook(request, env, ctx);
+  }
+
+  const auth = await authContext(request, env);
+
+  if (!auth) {
+    return json({ error: 'Nicht angemeldet.' }, { status: 401 });
+  }
+
+  if (path === '/api/auth/me' && request.method === 'GET') {
+    return json({
+      authenticated: true,
+      user: {
+        id: auth.userId,
+        name: auth.userName,
+        email: auth.email,
+        role: auth.role,
+      },
+      organization: {
+        id: auth.organizationId,
+        name: auth.organizationName,
+        plan: auth.organizationPlan,
+      },
+    });
+  }
+
   if (path === '/api/bootstrap' && request.method === 'GET') {
-    return json(await bootstrap(env));
+    return json(await bootstrap(env, auth));
   }
 
   if (path === '/api/ai/test' && request.method === 'POST') {
@@ -3327,7 +3950,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       return json({ error: 'message fehlt.' }, { status: 400 });
     }
 
-    const turn = await generateDemoDraft(env, body);
+    const turn = await generateDemoDraft(env, auth.organizationId, body);
 
     if (!turn) {
       return json({ error: 'Die KI konnte keine valide Antwort erzeugen.' }, { status: 502 });
@@ -3337,7 +3960,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
   }
 
   if (path === '/api/paypal/status' && request.method === 'GET') {
-    const current = await currentPayPalSubscription(env, DEMO_ORG);
+    const current = await currentPayPalSubscription(env, auth.organizationId);
 
     if (
       url.searchParams.get('sync') === '1' &&
@@ -3347,7 +3970,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       try {
         const synced = await syncPayPalSubscription(
           env,
-          DEMO_ORG,
+          auth.organizationId,
           String(current.provider_subscription_id),
         );
         return json({ ok: true, billing: synced });
@@ -3384,7 +4007,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     try {
       return json({
         ok: true,
-        ...(await createOrRevisePayPalSubscription(request, env, DEMO_ORG, plan)),
+        ...(await createOrRevisePayPalSubscription(request, env, auth.organizationId, plan)),
       });
     } catch (error: any) {
       return json(
@@ -3398,7 +4021,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     try {
       return json({
         ok: true,
-        ...(await cancelPayPalSubscription(env, DEMO_ORG)),
+        ...(await cancelPayPalSubscription(env, auth.organizationId)),
       });
     } catch (error: any) {
       return json(
@@ -3406,10 +4029,6 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
         { status: 502 },
       );
     }
-  }
-
-  if (path === '/api/paypal/webhook' && request.method === 'POST') {
-    return handlePayPalWebhook(request, env);
   }
 
   if (path === '/api/meta/status' && request.method === 'GET') {
@@ -3424,7 +4043,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
            ORDER BY connected_at DESC
            LIMIT 1`,
         )
-        .bind(DEMO_ORG)
+        .bind(auth.organizationId)
         .first<D1Row>();
     }
 
@@ -3450,37 +4069,16 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     path === '/api/meta/oauth/start' &&
     (request.method === 'POST' || request.method === 'GET')
   ) {
-    return oauthStart(request, env);
+    return oauthStart(request, env, auth.organizationId);
   }
 
   if (path === '/api/meta/oauth/callback' && request.method === 'GET') {
-    return oauthCallback(request, env);
-  }
-
-  if (path === '/api/meta/webhook' && request.method === 'GET') {
-    const mode = url.searchParams.get('hub.mode');
-    const token = url.searchParams.get('hub.verify_token');
-    const challenge = url.searchParams.get('hub.challenge');
-
-    if (
-      mode === 'subscribe' &&
-      env.META_VERIFY_TOKEN &&
-      token === env.META_VERIFY_TOKEN &&
-      challenge
-    ) {
-      return new Response(challenge);
-    }
-
-    return new Response('Forbidden', { status: 403 });
-  }
-
-  if (path === '/api/meta/webhook' && request.method === 'POST') {
-    return handleWebhook(request, env, ctx);
+    return oauthCallback(request, env, auth.organizationId);
   }
 
   if (path === '/api/agent/settings' && request.method === 'POST') {
     const body = await request.json<Record<string, unknown>>();
-    await saveAgent(env, body);
+    await saveAgent(env, auth.organizationId, body);
     return json({
       saved: true,
       agent: body,
@@ -3500,6 +4098,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       return json(
         await manualReply(
           env,
+          auth.organizationId,
           decodeURIComponent(replyMatch[1]),
           body.message.trim(),
         ),
@@ -3517,9 +4116,9 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     if (env.DB) {
       await env.DB
         .prepare(
-          'UPDATE conversations SET ai_mode=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+          'UPDATE conversations SET ai_mode=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND organization_id=?',
         )
-        .bind(mode, decodeURIComponent(aiModeMatch[1]))
+        .bind(mode, decodeURIComponent(aiModeMatch[1]), auth.organizationId)
         .run();
     }
 
@@ -3545,7 +4144,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       });
     }
 
-    const turn = await generateDemoDraft(env, body);
+    const turn = await generateDemoDraft(env, auth.organizationId, body);
 
     if (!turn) {
       return json(
