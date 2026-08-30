@@ -42,6 +42,12 @@ type Bootstrap = {
     webhookConfigured?: boolean;
     mode?: string;
   };
+  access?: {
+    billingEnforced?: boolean;
+    adminBypass?: boolean;
+    paid?: boolean;
+    granted?: boolean;
+  };
   metrics: Record<string, number>;
   conversations: Conversation[];
   agent: Record<string, any>;
@@ -215,6 +221,36 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
   const initials=String(user.name||user.email||'U').split(/\s+/).filter(Boolean).slice(0,2).map((x:string)=>x[0]?.toUpperCase()).join('')||'U';
   const workspaceInitial=String(data.organization.name||'W').trim().slice(0,1).toUpperCase();
   const billingActive=String(data.billing?.status||'').toLowerCase()==='active';
+  const accessGranted=data.access?.granted!==false;
+
+  function updateBilling(nextBilling:any){
+    const nextStatus=String(nextBilling?.status||'').toLowerCase();
+    const paid=nextStatus==='active'||(
+      nextStatus==='cancelled'&&
+      nextBilling?.currentPeriodEnd&&
+      Date.parse(String(nextBilling.currentPeriodEnd))>Date.now()
+    );
+
+    setData({
+      ...data,
+      billing:nextBilling,
+      access:{
+        ...(data.access||{}),
+        paid,
+        granted:Boolean(data.access?.adminBypass)||!Boolean(data.access?.billingEnforced)||paid,
+      },
+    });
+  }
+
+  if(!accessGranted){
+    return <SubscriptionGate
+      user={user}
+      organization={data.organization}
+      billing={data.billing}
+      onBillingChange={updateBilling}
+      onLogout={logout}
+    />;
+  }
 
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
@@ -241,7 +277,7 @@ function ProductApp({auth,onLogout}:{auth:any,onLogout:()=>void}) {
         {view === 'agent' && <Agent initial={data.agent}/>} 
         {view === 'analytics' && <Analytics data={data}/>} 
         {view === 'integrations' && <Integrations instagram={data.instagram}/>} 
-        {view === 'billing' && <Billing initial={data.billing}/>}  
+        {view === 'billing' && <Billing initial={data.billing} onBillingChange={updateBilling}/>}  
         {view === 'settings' && <SettingsPage user={user} organization={data.organization} onLogout={logout}/>} 
       </div>
     </main>
@@ -814,7 +850,41 @@ function Analytics({data}:{data:Bootstrap}){return <><PageHead eyebrow="PERFORMA
 
 function Integrations({instagram}:{instagram:Bootstrap['instagram']}){const [msg,setMsg]=useState('');async function connect(){const r=await fetch('/api/meta/oauth/start',{method:'POST'});const j:any=await r.json();if(j.url){window.location.href=j.url;return;}setMsg(j.error||'Verbindung konnte nicht gestartet werden.')}return <><PageHead eyebrow="INTEGRATIONEN" title="Kanäle verbinden" desc="Hier verbinden deine Kunden später ihre eigenen Accounts."/><div className="integration-card"><div className="instagram-logo"><Instagram/></div><div className="integration-info"><div><h3>Instagram</h3><span className="official">META API</span></div><p>Business- oder Creator-Account verbinden, DMs per Webhook empfangen und Antworten über die offizielle API senden.</p><div className="feature-chips"><span><Check/> DMs</span><span><Check/> Webhooks</span><span><Check/> Kommentar → DM vorbereitet</span></div></div><div className="integration-action"><span className={instagram.connected?'connected':'disconnected'}>{instagram.connected?'Verbunden':'Nicht verbunden'}</span><button className="primary" onClick={connect}><Instagram size={17}/> Instagram verbinden</button></div></div>{msg&&<div className="notice"><ShieldCheck/><div><b>Integration vorbereitet</b><p>{msg}</p></div></div>}<div className="panel setup-steps"><div className="panel-head"><div><b>Was als Nächstes technisch aktiviert wird</b><span>Die App-Oberfläche und Webhook-Endpunkte sind bereits vorbereitet.</span></div></div>{[['1','Meta App anlegen','Instagram API + Webhooks aktivieren'],['2','OAuth konfigurieren','Kunden verbinden ihren Account selbst'],['3','Webhook abonnieren','Neue DMs landen in unserer Conversation Engine'],['4','Send API verbinden','AI-Antworten gehen zurück in Instagram']].map(([n,t,d])=><div className="setup-step" key={n}><i>{n}</i><div><b>{t}</b><span>{d}</span></div></div>)}</div></>}
 
-function Billing({initial}:{initial?:Bootstrap['billing']}){
+
+function SubscriptionGate({
+  user,
+  organization,
+  billing,
+  onBillingChange,
+  onLogout,
+}:{
+  user:any,
+  organization:any,
+  billing?:Bootstrap['billing'],
+  onBillingChange:(billing:any)=>void,
+  onLogout:()=>void,
+}){
+  return <div className="subscription-gate-page">
+    <header className="subscription-gate-top">
+      <div className="brand"><div className="brand-mark"><Sparkles size={18}/></div><div><strong>DM Sales AI</strong><span>{organization.name}</span></div></div>
+      <div className="subscription-account">
+        <div><b>{user.name}</b><span>{user.email}</span></div>
+        <button className="secondary" onClick={onLogout}>Abmelden</button>
+      </div>
+    </header>
+
+    <main className="subscription-gate-main">
+      <div className="subscription-gate-intro">
+        <span className="eyebrow">WORKSPACE AKTIVIEREN</span>
+        <h1>Wähle deinen Plan.</h1>
+        <p>Dein Account ist erstellt. Sobald dein PayPal-Abo aktiv ist, wird dein privater Workspace automatisch freigeschaltet.</p>
+      </div>
+      <Billing initial={billing} onBillingChange={onBillingChange}/>
+    </main>
+  </div>;
+}
+
+function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBillingChange?:(billing:any)=>void}){
   const [billing,setBilling]=useState(initial||{});
   const [loading,setLoading]=useState('');
   const [message,setMessage]=useState('');
@@ -831,7 +901,7 @@ function Billing({initial}:{initial?:Bootstrap['billing']}){
     fetch(`/api/paypal/status${shouldSync?'?sync=1':''}`)
       .then(async r=>{
         const j:any=await r.json();
-        if(j.billing)setBilling(j.billing);
+        if(j.billing){setBilling(j.billing);onBillingChange?.(j.billing);}
         if(!r.ok&&j.error)setMessage(j.error);
         if(returned==='success')setMessage('PayPal-Abo bestätigt. Dein Status wurde synchronisiert.');
         if(returned==='cancelled')setMessage('PayPal-Checkout wurde abgebrochen.');
@@ -858,7 +928,9 @@ function Billing({initial}:{initial?:Bootstrap['billing']}){
       const j:any=await r.json();
       if(!r.ok){setMessage(j.error||'PayPal konnte nicht gestartet werden.');return;}
       if(j.alreadyActive){
-        setBilling(j.billing||billing);
+        const next=j.billing||billing;
+        setBilling(next);
+        onBillingChange?.(next);
         setMessage('Dieser Plan ist bereits aktiv.');
         return;
       }
@@ -882,7 +954,9 @@ function Billing({initial}:{initial?:Bootstrap['billing']}){
       const r=await fetch('/api/paypal/cancel',{method:'POST'});
       const j:any=await r.json();
       if(!r.ok){setMessage(j.error||'Kündigung fehlgeschlagen.');return;}
-      setBilling({...billing,status:'cancelled'});
+      const next={...billing,status:'cancelled'};
+      setBilling(next);
+      onBillingChange?.(next);
       setMessage('Das PayPal-Abo wurde gekündigt.');
     }catch{
       setMessage('Verbindung zu PayPal fehlgeschlagen.');
