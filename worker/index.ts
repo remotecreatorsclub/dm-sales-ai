@@ -1,7 +1,6 @@
 interface Env {
   DB?: D1Database;
   AI?: Ai;
-  DEMO_MODE?: string;
   AI_MODEL?: string;
   META_VERIFY_TOKEN?: string;
   META_APP_ID?: string;
@@ -80,7 +79,6 @@ type SalesTurn = {
 
 const API_VERSION_DEFAULT = 'v26.0';
 const AI_MODEL_DEFAULT = '@cf/meta/llama-3.1-8b-instruct-fast';
-const DEMO_ORG = 'org_demo';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -204,9 +202,9 @@ const json = (data: unknown, init: ResponseInit = {}) =>
     },
   });
 
-const demoBootstrap = {
-  organization: { id: DEMO_ORG, name: 'Demo Workspace', plan: 'pro' },
-  instagram: { connected: false, username: '@deinaccount', status: 'Demo-Modus' },
+const emptyBootstrap = {
+  organization: { id: '', name: '', plan: 'starter' },
+  instagram: { connected: false, username: '', status: 'not_connected', ready: false },
   billing: {
     provider: 'paypal',
     plan: 'starter',
@@ -214,10 +212,12 @@ const demoBootstrap = {
     subscriptionId: '',
     currentPeriodEnd: '',
     configured: false,
-    mode: 'sandbox',
+    webhookConfigured: false,
+    mode: 'live',
   },
   metrics: {
     conversationsTotal: 0,
+    conversationsThisMonth: 0,
     conversationsToday: 0,
     painPointsKnown: 0,
     qualifiedLeads: 0,
@@ -228,23 +228,24 @@ const demoBootstrap = {
   agent: {
     name: 'Sales Agent',
     active: true,
-    offerName: 'Dein Hauptangebot',
+    offerName: '',
     productKnowledge: '',
-    price: '1.197 €',
+    price: '',
     paymentPlan: '',
     paymentMethods: '',
     paymentHint: '',
     showPaymentHintWithPrice: false,
-    checkoutCta: 'Hier kannst du direkt starten:',
-    audience: 'Menschen, die ein digitales Business aufbauen möchten',
-    painPoints:
-      'Kein klarer Startpunkt\nTechnik-Überforderung\nFehlende Strategie\nAngst, Geld zu verschwenden',
-    outcomes:
-      'Klarer Schritt-für-Schritt-Weg\nEigenes digitales Angebot\nPlanbarer Verkaufsprozess',
-    objections: 'Zu teuer\nKeine Zeit\nZu technisch\nAngst, dass es nicht funktioniert',
-    checkoutUrl: 'https://example.com/checkout',
-    bookingUrl: 'https://example.com/call',
-    tone: 'Natürlich, direkt, freundlich. Kurze Nachrichten. Nie drängen.',
+    checkoutCta: '',
+    audience: '',
+    painPoints: '',
+    outcomes: '',
+    objections: '',
+    checkoutUrl: '',
+    bookingUrl: '',
+    tone: 'Natürlich, direkt und freundlich.',
+    voiceExamples: '',
+    salesRules: '',
+    guardrails: '',
   },
 };
 
@@ -1199,6 +1200,7 @@ async function workspaceMetrics(env: Env, organizationId: string) {
   if (!env.DB) {
     return {
       conversationsTotal: 0,
+      conversationsThisMonth: 0,
       conversationsToday: 0,
       painPointsKnown: 0,
       qualifiedLeads: 0,
@@ -1213,6 +1215,11 @@ async function workspaceMetrics(env: Env, organizationId: string) {
          (SELECT COUNT(*)
           FROM conversations
           WHERE organization_id=?) AS conversations_total,
+
+         (SELECT COUNT(*)
+          FROM conversations
+          WHERE organization_id=?
+            AND strftime('%Y-%m',created_at)=strftime('%Y-%m','now')) AS conversations_this_month,
 
          (SELECT COUNT(*)
           FROM conversations
@@ -1269,11 +1276,13 @@ async function workspaceMetrics(env: Env, organizationId: string) {
       organizationId,
       organizationId,
       organizationId,
+      organizationId,
     )
     .first<D1Row>();
 
   return {
     conversationsTotal: Number(row?.conversations_total || 0),
+    conversationsThisMonth: Number(row?.conversations_this_month || 0),
     conversationsToday: Number(row?.conversations_today || 0),
     painPointsKnown: Number(row?.pain_points_known || 0),
     qualifiedLeads: Number(row?.qualified_leads || 0),
@@ -1286,7 +1295,7 @@ async function bootstrap(
   env: Env,
   auth: AuthContext,
 ) {
-  const data = structuredClone(demoBootstrap) as any;
+  const data = structuredClone(emptyBootstrap) as any;
 
   data.user = {
     id: auth.userId,
@@ -1303,7 +1312,13 @@ async function bootstrap(
   data.instagram = {
     connected: false,
     username: '',
-    status: 'Nicht verbunden',
+    status: 'not_connected',
+    ready: Boolean(
+      env.META_APP_ID &&
+      env.META_APP_SECRET &&
+      env.META_VERIFY_TOKEN &&
+      env.TOKEN_ENCRYPTION_KEY
+    ),
   };
   data.metrics = await workspaceMetrics(env, auth.organizationId);
   data.conversations = await workspaceConversations(env, auth.organizationId);
@@ -1320,8 +1335,14 @@ async function bootstrap(
   if (account) {
     data.instagram = {
       connected: account.status === 'connected',
-      username: `@${account.username}`,
+      username: account.username ? `@${account.username}` : '',
       status: account.status,
+      ready: Boolean(
+        env.META_APP_ID &&
+        env.META_APP_SECRET &&
+        env.META_VERIFY_TOKEN &&
+        env.TOKEN_ENCRYPTION_KEY
+      ),
     };
   }
 
@@ -2039,7 +2060,7 @@ function parseJsonObject(value: unknown): Record<string, any> {
 }
 
 function leadContextPrompt(lead: D1Row) {
-  const memory = {
+  const memory: Record<string, any> = {
     goal: lead.goal || 'Unklar',
     painPoint: lead.pain_point || lead.painPoint || 'Unklar',
     experience: lead.experience || 'Unklar',
@@ -2223,7 +2244,7 @@ async function runWorkersAI(
   }
 }
 
-type DemoHistoryMessage = {
+type HistoryMessage = {
   from: 'lead' | 'ai' | 'human';
   body: string;
   time?: string;
@@ -2369,11 +2390,11 @@ async function activeWorkspaceAgent(env: Env, organizationId: string): Promise<D
 
       if (saved) return saved;
     } catch (error) {
-      console.warn('Gespeicherter Test-Agent konnte nicht geladen werden; Demo-Fallback wird genutzt.', error);
+      console.warn('Gespeicherter Agent konnte nicht geladen werden.', error);
     }
   }
 
-  return (demoBootstrap.agent || {}) as D1Row;
+  return (emptyBootstrap.agent || {}) as D1Row;
 }
 
 
@@ -2382,14 +2403,14 @@ function isUnknownValue(value: unknown) {
   return !v || ['unklar','unbekannt','noch erkennen','noch unbekannt','n/a','-'].includes(v);
 }
 
-function lastLeadText(history: DemoHistoryMessage[]) {
+function lastLeadText(history: HistoryMessage[]) {
   for (let i = history.length - 1; i >= 0; i -= 1) {
     if (history[i]?.from === 'lead') return String(history[i].body || '').trim();
   }
   return '';
 }
 
-function inferStyleFromDemoHistory(history: DemoHistoryMessage[]) {
+function inferStyleFromHistory(history: HistoryMessage[]) {
   const leadTexts = history
     .filter((message) => message.from === 'lead')
     .map((message) => String(message.body || '').trim())
@@ -2442,13 +2463,13 @@ function mergeUniqueLines(...values: unknown[]) {
   return lines.slice(0, 8).join('\n');
 }
 
-function stabilizeDemoAnalysis(
+function stabilizeAnalysis(
   turn: SalesTurn,
   previousLead: D1Row,
-  history: DemoHistoryMessage[],
+  history: HistoryMessage[],
 ) {
   const priorMemory = parseJsonObject(previousLead.memory_json || previousLead.memoryJson);
-  const inferredStyle = inferStyleFromDemoHistory(history);
+  const inferredStyle = inferStyleFromHistory(history);
 
   if (isUnknownValue(turn.goal) && !isUnknownValue(priorMemory.goal)) {
     turn.goal = String(priorMemory.goal);
@@ -2869,7 +2890,7 @@ function naturalReplyViolation(
   return '';
 }
 
-async function generateDemoDraft(
+async function generateAgentDraft(
   env: Env,
   organizationId: string,
   body: {
@@ -2877,7 +2898,7 @@ async function generateDemoDraft(
     painPoint?: string;
     objection?: string;
     message?: string;
-    history?: DemoHistoryMessage[];
+    history?: HistoryMessage[];
     leadMemory?: Record<string, unknown>;
     styleProfile?: Record<string, unknown>;
   },
@@ -2946,7 +2967,7 @@ async function generateDemoDraft(
   // WICHTIG: Erst analysieren, DANACH antworten.
   // Dadurch kennt die sichtbare Antwort bereits die neu erkannte Stage, Ziel und Painpoint.
   const rawAnalysis = await runWorkersAI(env, analysisMessages);
-  const turn = stabilizeDemoAnalysis(
+  const turn = stabilizeAnalysis(
     rawAnalysis || fallbackTurnFromLead(pseudoLead, 'ANALYSIS_ONLY'),
     pseudoLead,
     history,
@@ -3149,6 +3170,23 @@ function isBillingAdmin(env: Env, email: string) {
     .filter(Boolean);
 
   return allowed.includes(String(email || '').trim().toLowerCase());
+}
+
+function planConversationLimit(plan: string) {
+  return String(plan).toLowerCase() === 'pro' ? 5000 : 500;
+}
+
+function planInstagramAccountLimit(plan: string) {
+  return String(plan).toLowerCase() === 'pro' ? 3 : 1;
+}
+
+async function organizationPlan(env: Env, organizationId: string) {
+  if (!env.DB) return 'starter';
+  const row = await env.DB
+    .prepare('SELECT plan FROM organizations WHERE id=? LIMIT 1')
+    .bind(organizationId)
+    .first<D1Row>();
+  return String(row?.plan || 'starter');
 }
 
 function subscriptionHasEntitlement(subscription: D1Row | null) {
@@ -3581,12 +3619,37 @@ async function subscribeInstagramWebhooks(
   return payload;
 }
 
-function oauthStart(request: Request, env: Env, organizationId: string) {
-  if (!env.META_APP_ID) {
+async function oauthStart(request: Request, env: Env, organizationId: string) {
+  if (
+    !env.META_APP_ID ||
+    !env.META_APP_SECRET ||
+    !env.META_VERIFY_TOKEN ||
+    !env.TOKEN_ENCRYPTION_KEY
+  ) {
     return json(
-      { error: 'META_APP_ID fehlt noch. Trage die Meta-App-ID als Worker-Variable ein.' },
-      { status: 400 },
+      { error: 'Instagram API ist für diesen Deployment noch nicht vollständig konfiguriert.' },
+      { status: 503 },
     );
+  }
+
+  if (env.DB) {
+    const plan = await organizationPlan(env, organizationId);
+    const limit = planInstagramAccountLimit(plan);
+    const countRow = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS total
+         FROM instagram_accounts
+         WHERE organization_id=? AND status='connected'`,
+      )
+      .bind(organizationId)
+      .first<D1Row>();
+
+    if (Number(countRow?.total || 0) >= limit) {
+      return json(
+        { error: `Dein ${plan.toUpperCase()}-Plan erlaubt maximal ${limit} Instagram-Account${limit === 1 ? '' : 's'}.` },
+        { status: 409 },
+      );
+    }
   }
 
   const state = crypto.randomUUID().replaceAll('-', '');
@@ -3846,6 +3909,38 @@ async function processInboundMessage(
     .first<D1Row>();
 
   if (!account) return;
+
+  const existingLead = await env.DB
+    .prepare(
+      `SELECT l.id AS lead_id,c.id AS conversation_id
+       FROM leads l
+       LEFT JOIN conversations c ON c.lead_id=l.id
+       WHERE l.instagram_account_id=? AND l.external_user_id=?
+       LIMIT 1`,
+    )
+    .bind(account.id, senderId)
+    .first<D1Row>();
+
+  if (!existingLead?.conversation_id) {
+    const plan = await organizationPlan(env, String(account.organization_id));
+    const limit = planConversationLimit(plan);
+    const usage = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS total
+         FROM conversations
+         WHERE organization_id=?
+           AND strftime('%Y-%m',created_at)=strftime('%Y-%m','now')`,
+      )
+      .bind(account.organization_id)
+      .first<D1Row>();
+
+    if (Number(usage?.total || 0) >= limit) {
+      console.warn(
+        `Conversation limit reached for organization ${account.organization_id}: ${limit}`,
+      );
+      return;
+    }
+  }
 
   await env.DB
     .prepare(
@@ -4140,12 +4235,7 @@ async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext)
 
 async function manualReply(env: Env, organizationId: string, conversationId: string, message: string) {
   if (!env.DB) {
-    return {
-      sent: true,
-      id: crypto.randomUUID(),
-      message,
-      demo: true,
-    };
+    throw new Error('Datenbank nicht verfügbar.');
   }
 
   const row = await env.DB
@@ -4165,12 +4255,7 @@ async function manualReply(env: Env, organizationId: string, conversationId: str
     .first<D1Row>();
 
   if (!row) {
-    return {
-      sent: true,
-      id: crypto.randomUUID(),
-      message,
-      demo: true,
-    };
+    throw new Error('Konversation nicht gefunden.');
   }
 
   const sent = await sendInstagramText(
@@ -4221,7 +4306,6 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     return json({
       ok: true,
       service: 'dm-sales-ai',
-      demo: env.DEMO_MODE !== 'false',
       database: Boolean(env.DB),
       ai: Boolean(env.AI),
       aiProvider: 'cloudflare-workers-ai',
@@ -4338,6 +4422,9 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
   }
 
   if (path === '/api/bootstrap' && request.method === 'GET') {
+    if (!env.DB) {
+      return json({ error: 'Datenbank nicht verfügbar.' }, { status: 503 });
+    }
     return json(await bootstrap(env, auth));
   }
 
@@ -4361,7 +4448,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       stage?: string;
       painPoint?: string;
       objection?: string;
-      history?: DemoHistoryMessage[];
+      history?: HistoryMessage[];
       leadMemory?: Record<string, unknown>;
       styleProfile?: Record<string, unknown>;
     }>();
@@ -4370,7 +4457,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       return json({ error: 'message fehlt.' }, { status: 400 });
     }
 
-    const turn = await generateDemoDraft(env, auth.organizationId, body);
+    const turn = await generateAgentDraft(env, auth.organizationId, body);
 
     if (!turn) {
       return json({ error: 'Die KI konnte keine valide Antwort erzeugen.' }, { status: 502 });
@@ -4503,7 +4590,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       webhookUrl: `${url.origin}/api/meta/webhook`,
       redirectUrl: redirectUri(request, env),
       requiredWebhookFields: ['messages', 'messaging_postbacks'],
-      mode: env.DEMO_MODE !== 'false' ? 'demo' : 'production',
+      mode: 'production',
     });
   }
 
@@ -4524,7 +4611,7 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
     return json({
       saved: true,
       agent: body,
-      mode: env.DB ? 'database' : 'demo',
+      mode: 'database',
     });
   }
 
@@ -4573,20 +4660,19 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
       painPoint?: string;
       objection?: string;
       message?: string;
-      history?: DemoHistoryMessage[];
+      history?: HistoryMessage[];
       leadMemory?: Record<string, unknown>;
       styleProfile?: Record<string, unknown>;
     }>();
 
     if (!env.AI) {
-      return json({
-        draft:
-          'Workers AI ist noch nicht verbunden. Prüfe den AI-Binding-Eintrag in wrangler.jsonc.',
-        demo: true,
-      });
+      return json(
+        { error: 'Workers AI ist für diesen Deployment nicht verfügbar.' },
+        { status: 503 },
+      );
     }
 
-    const turn = await generateDemoDraft(env, auth.organizationId, body);
+    const turn = await generateAgentDraft(env, auth.organizationId, body);
 
     if (!turn) {
       return json(
