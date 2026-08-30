@@ -22,6 +22,10 @@ interface Env {
   PAYPAL_PRO_PLAN_ID?: string;
   BILLING_ENFORCED?: string;
   BILLING_ADMIN_EMAILS?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  APP_URL?: string;
+  EMAIL_VERIFICATION_ENFORCED?: string;
 }
 
 type D1Row = Record<string, any>;
@@ -30,6 +34,7 @@ type AuthContext = {
   sessionId: string;
   userId: string;
   email: string;
+  emailVerified: boolean;
   userName: string;
   organizationId: string;
   organizationName: string;
@@ -390,6 +395,382 @@ function workspaceSlug(name: string) {
   return `${base}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+
+function emailVerificationEnforced(env: Env) {
+  return env.EMAIL_VERIFICATION_ENFORCED === 'true';
+}
+
+function emailConfigured(env: Env) {
+  return Boolean(env.RESEND_API_KEY && env.EMAIL_FROM);
+}
+
+function appUrl(request: Request, env: Env) {
+  const configured = String(env.APP_URL || '').trim().replace(/\/+$/g, '');
+  return configured || new URL(request.url).origin;
+}
+
+function escapeHtml(value: unknown) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function sendTransactionalEmail(
+  env: Env,
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+) {
+  if (!emailConfigured(env)) {
+    throw new Error(
+      'E-Mail-Service ist nicht konfiguriert. RESEND_API_KEY oder EMAIL_FROM fehlt.',
+    );
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM,
+      to: [to],
+      subject,
+      html,
+      text,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `E-Mail konnte nicht gesendet werden: ${response.status} ${await response.text()}`,
+    );
+  }
+
+  return response.json<any>();
+}
+
+async function createAuthToken(
+  env: Env,
+  userId: string,
+  type: 'verify_email' | 'password_reset',
+  lifetimeMinutes: number,
+) {
+  if (!env.DB) throw new Error('Datenbank nicht verfügbar.');
+
+  const token = randomToken(32);
+  const tokenHash = await sha256Hex(token);
+  const expiresAt = new Date(
+    Date.now() + lifetimeMinutes * 60 * 1000,
+  ).toISOString();
+
+  await env.DB
+    .prepare(
+      `DELETE FROM auth_tokens
+       WHERE user_id=? AND type=? AND used_at IS NULL`,
+    )
+    .bind(userId, type)
+    .run();
+
+  await env.DB
+    .prepare(
+      `INSERT INTO auth_tokens
+        (id,user_id,type,token_hash,expires_at)
+       VALUES (?,?,?,?,?)`,
+    )
+    .bind(crypto.randomUUID(), userId, type, tokenHash, expiresAt)
+    .run();
+
+  return { token, expiresAt };
+}
+
+async function sendVerificationEmail(
+  request: Request,
+  env: Env,
+  userId: string,
+  email: string,
+  name: string,
+) {
+  const { token } = await createAuthToken(
+    env,
+    userId,
+    'verify_email',
+    24 * 60,
+  );
+
+  const link = `${appUrl(request, env)}/?verify=${encodeURIComponent(token)}`;
+  const safeName = escapeHtml(name || 'dort');
+
+  return sendTransactionalEmail(
+    env,
+    email,
+    'E-Mail-Adresse bestätigen · DM Sales AI',
+    `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#172033">
+        <h2 style="margin:0 0 16px">E-Mail-Adresse bestätigen</h2>
+        <p>Hi ${safeName},</p>
+        <p>bestätige bitte deine E-Mail-Adresse, damit dein DM Sales AI Account vollständig freigeschaltet werden kann.</p>
+        <p style="margin:28px 0">
+          <a href="${escapeHtml(link)}" style="display:inline-block;background:#0b1626;color:#fff;text-decoration:none;padding:13px 18px;border-radius:8px;font-weight:700">E-Mail bestätigen</a>
+        </p>
+        <p style="font-size:13px;color:#6c7888">Der Link ist 24 Stunden gültig.</p>
+      </div>
+    `,
+    `Hi ${name || ''},
+
+bestätige bitte deine E-Mail-Adresse für DM Sales AI:
+
+${link}
+
+Der Link ist 24 Stunden gültig.`,
+  );
+}
+
+async function sendPasswordResetEmail(
+  request: Request,
+  env: Env,
+  userId: string,
+  email: string,
+  name: string,
+) {
+  const { token } = await createAuthToken(
+    env,
+    userId,
+    'password_reset',
+    60,
+  );
+
+  const link = `${appUrl(request, env)}/?reset=${encodeURIComponent(token)}`;
+  const safeName = escapeHtml(name || 'dort');
+
+  return sendTransactionalEmail(
+    env,
+    email,
+    'Passwort zurücksetzen · DM Sales AI',
+    `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#172033">
+        <h2 style="margin:0 0 16px">Passwort zurücksetzen</h2>
+        <p>Hi ${safeName},</p>
+        <p>über den folgenden Button kannst du ein neues Passwort für deinen DM Sales AI Account festlegen.</p>
+        <p style="margin:28px 0">
+          <a href="${escapeHtml(link)}" style="display:inline-block;background:#0b1626;color:#fff;text-decoration:none;padding:13px 18px;border-radius:8px;font-weight:700">Neues Passwort festlegen</a>
+        </p>
+        <p style="font-size:13px;color:#6c7888">Der Link ist 60 Minuten gültig. Wenn du die Anfrage nicht gestellt hast, kannst du diese E-Mail ignorieren.</p>
+      </div>
+    `,
+    `Hi ${name || ''},
+
+hier kannst du dein Passwort für DM Sales AI zurücksetzen:
+
+${link}
+
+Der Link ist 60 Minuten gültig.`,
+  );
+}
+
+async function verifyEmailToken(
+  request: Request,
+  env: Env,
+) {
+  if (!env.DB) return json({ error: 'D1 Datenbank fehlt.' }, { status: 503 });
+
+  const body = await request.json<{ token?: string }>();
+  const token = String(body.token || '').trim();
+
+  if (!token) {
+    return json({ error: 'Bestätigungslink ist ungültig.' }, { status: 400 });
+  }
+
+  const tokenHash = await sha256Hex(token);
+  const row = await env.DB
+    .prepare(
+      `SELECT t.id,t.user_id,u.email
+       FROM auth_tokens t
+       JOIN users u ON u.id=t.user_id
+       WHERE t.token_hash=?
+         AND t.type='verify_email'
+         AND t.used_at IS NULL
+         AND t.expires_at > CURRENT_TIMESTAMP
+       LIMIT 1`,
+    )
+    .bind(tokenHash)
+    .first<D1Row>();
+
+  if (!row) {
+    return json(
+      { error: 'Dieser Bestätigungslink ist ungültig oder abgelaufen.' },
+      { status: 400 },
+    );
+  }
+
+  await env.DB.batch([
+    env.DB
+      .prepare(
+        `UPDATE users
+         SET email_verified_at=COALESCE(email_verified_at,CURRENT_TIMESTAMP),
+             updated_at=CURRENT_TIMESTAMP
+         WHERE id=?`,
+      )
+      .bind(row.user_id),
+    env.DB
+      .prepare('UPDATE auth_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=?')
+      .bind(row.id),
+  ]);
+
+  return json({ ok: true, email: String(row.email || '') });
+}
+
+async function forgotPassword(
+  request: Request,
+  env: Env,
+) {
+  const generic = {
+    ok: true,
+    message:
+      'Falls für diese E-Mail-Adresse ein Konto existiert, wurde ein Link zum Zurücksetzen gesendet.',
+  };
+
+  if (!env.DB) return json(generic);
+
+  const body = await request.json<{ email?: string }>();
+  const email = normalizeEmail(body.email);
+
+  if (!email) return json(generic);
+
+  const user = await env.DB
+    .prepare(
+      `SELECT id,email,name,COALESCE(disabled,0) AS disabled
+       FROM users
+       WHERE email=?
+       LIMIT 1`,
+    )
+    .bind(email)
+    .first<D1Row>();
+
+  if (!user || user.disabled) return json(generic);
+
+  try {
+    await sendPasswordResetEmail(
+      request,
+      env,
+      String(user.id),
+      String(user.email),
+      String(user.name || ''),
+    );
+  } catch (error: any) {
+    console.error('Password reset email failed:', error?.message || error);
+  }
+
+  return json(generic);
+}
+
+async function resetPassword(
+  request: Request,
+  env: Env,
+) {
+  if (!env.DB) return json({ error: 'D1 Datenbank fehlt.' }, { status: 503 });
+
+  const body = await request.json<{ token?: string; password?: string }>();
+  const token = String(body.token || '').trim();
+  const password = String(body.password || '');
+
+  if (!token) {
+    return json({ error: 'Reset-Link ist ungültig.' }, { status: 400 });
+  }
+
+  if (password.length < 10) {
+    return json(
+      { error: 'Das Passwort muss mindestens 10 Zeichen lang sein.' },
+      { status: 400 },
+    );
+  }
+
+  if (!/[A-Za-zÄÖÜäöüß]/.test(password) || !/\d/.test(password)) {
+    return json(
+      { error: 'Das Passwort muss mindestens einen Buchstaben und eine Zahl enthalten.' },
+      { status: 400 },
+    );
+  }
+
+  const tokenHash = await sha256Hex(token);
+  const row = await env.DB
+    .prepare(
+      `SELECT id,user_id
+       FROM auth_tokens
+       WHERE token_hash=?
+         AND type='password_reset'
+         AND used_at IS NULL
+         AND expires_at > CURRENT_TIMESTAMP
+       LIMIT 1`,
+    )
+    .bind(tokenHash)
+    .first<D1Row>();
+
+  if (!row) {
+    return json(
+      { error: 'Dieser Reset-Link ist ungültig oder abgelaufen.' },
+      { status: 400 },
+    );
+  }
+
+  const { salt, hash } = await makePassword(password);
+
+  await env.DB.batch([
+    env.DB
+      .prepare(
+        `UPDATE users
+         SET password_hash=?,
+             password_salt=?,
+             updated_at=CURRENT_TIMESTAMP
+         WHERE id=?`,
+      )
+      .bind(hash, salt, row.user_id),
+    env.DB
+      .prepare('UPDATE auth_tokens SET used_at=CURRENT_TIMESTAMP WHERE id=?')
+      .bind(row.id),
+    env.DB
+      .prepare('DELETE FROM sessions WHERE user_id=?')
+      .bind(row.user_id),
+  ]);
+
+  return json({ ok: true });
+}
+
+async function resendVerification(
+  request: Request,
+  env: Env,
+  auth: AuthContext,
+) {
+  if (auth.emailVerified) {
+    return json({ ok: true, alreadyVerified: true });
+  }
+
+  try {
+    await sendVerificationEmail(
+      request,
+      env,
+      auth.userId,
+      auth.email,
+      auth.userName,
+    );
+    return json({ ok: true });
+  } catch (error: any) {
+    return json(
+      {
+        error:
+          error?.message ||
+          'Bestätigungs-E-Mail konnte nicht gesendet werden.',
+      },
+      { status: 502 },
+    );
+  }
+}
+
 async function createSession(
   env: Env,
   userId: string,
@@ -430,6 +811,7 @@ async function authContext(request: Request, env: Env): Promise<AuthContext | nu
          s.user_id,
          s.organization_id,
          u.email,
+         u.email_verified_at,
          u.name AS user_name,
          o.name AS organization_name,
          o.plan AS organization_plan,
@@ -461,6 +843,7 @@ async function authContext(request: Request, env: Env): Promise<AuthContext | nu
     sessionId: String(row.session_id),
     userId: String(row.user_id),
     email: String(row.email || ''),
+    emailVerified: Boolean(row.email_verified_at),
     userName: String(row.user_name || ''),
     organizationId: String(row.organization_id),
     organizationName: String(row.organization_name || 'Workspace'),
@@ -567,10 +950,33 @@ async function registerUser(
 
   const session = await createSession(env, userId, organizationId);
 
+  const verificationRequired = emailVerificationEnforced(env);
+
+  if (verificationRequired) {
+    try {
+      await sendVerificationEmail(
+        request,
+        env,
+        userId,
+        email,
+        name,
+      );
+    } catch (error: any) {
+      console.error('Verification email failed:', error?.message || error);
+    }
+  }
+
   return json(
     {
       ok: true,
-      user: { id: userId, name, email, role: 'owner' },
+      user: {
+        id: userId,
+        name,
+        email,
+        role: 'owner',
+        emailVerified: !verificationRequired,
+      },
+      verificationRequired,
       organization: {
         id: organizationId,
         name: workspaceName,
@@ -599,7 +1005,7 @@ async function loginUser(request: Request, env: Env) {
 
   const user = await env.DB
     .prepare(
-      `SELECT id,email,name,password_hash,password_salt,COALESCE(disabled,0) AS disabled
+      `SELECT id,email,name,password_hash,password_salt,email_verified_at,COALESCE(disabled,0) AS disabled
        FROM users
        WHERE email=?
        LIMIT 1`,
@@ -657,6 +1063,7 @@ async function loginUser(request: Request, env: Env) {
         name: String(user.name || ''),
         email: String(user.email || ''),
         role: String(membership.role || 'owner'),
+        emailVerified: Boolean(user.email_verified_at),
       },
       organization: {
         id: String(membership.organization_id),
@@ -886,6 +1293,7 @@ async function bootstrap(
     name: auth.userName,
     email: auth.email,
     role: auth.role,
+    emailVerified: auth.emailVerified,
   };
   data.organization = {
     id: auth.organizationId,
@@ -986,6 +1394,8 @@ async function bootstrap(
     adminBypass: access.adminBypass,
     paid: access.paid,
     granted: access.granted,
+    emailVerificationEnforced: emailVerificationEnforced(env),
+    emailVerified: auth.emailVerified,
   };
 
   return data;
@@ -3837,6 +4247,10 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
           String(env.BILLING_ADMIN_EMAILS || '').trim()
         ),
       },
+      emailAuth: {
+        configured: emailConfigured(env),
+        verificationEnforced: emailVerificationEnforced(env),
+      },
     });
   }
 
@@ -3850,6 +4264,18 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
 
   if (path === '/api/auth/logout' && request.method === 'POST') {
     return logoutUser(request, env);
+  }
+
+  if (path === '/api/auth/verify-email' && request.method === 'POST') {
+    return verifyEmailToken(request, env);
+  }
+
+  if (path === '/api/auth/forgot-password' && request.method === 'POST') {
+    return forgotPassword(request, env);
+  }
+
+  if (path === '/api/auth/reset-password' && request.method === 'POST') {
+    return resetPassword(request, env);
   }
 
   // Provider webhooks must stay public. They verify their own signatures.
@@ -3892,17 +4318,37 @@ async function handleApi(request: Request, env: Env, ctx?: ExecutionContext): Pr
         name: auth.userName,
         email: auth.email,
         role: auth.role,
+        emailVerified: auth.emailVerified,
       },
       organization: {
         id: auth.organizationId,
         name: auth.organizationName,
         plan: auth.organizationPlan,
       },
+      verificationRequired:
+        emailVerificationEnforced(env) && !auth.emailVerified,
     });
+  }
+
+  if (
+    path === '/api/auth/resend-verification' &&
+    request.method === 'POST'
+  ) {
+    return resendVerification(request, env, auth);
   }
 
   if (path === '/api/bootstrap' && request.method === 'GET') {
     return json(await bootstrap(env, auth));
+  }
+
+  if (emailVerificationEnforced(env) && !auth.emailVerified) {
+    return json(
+      {
+        error: 'Bitte bestätige zuerst deine E-Mail-Adresse.',
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+      },
+      { status: 403 },
+    );
   }
 
   if (path === '/api/ai/test' && request.method === 'POST') {
