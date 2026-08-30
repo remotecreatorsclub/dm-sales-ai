@@ -212,165 +212,14 @@ const demoBootstrap = {
     mode: 'sandbox',
   },
   metrics: {
-    conversationsToday: 47,
-    qualifiedLeads: 18,
-    hotLeads: 9,
-    checkoutSent: 6,
-    conversions: 2,
+    conversationsTotal: 0,
+    conversationsToday: 0,
+    painPointsKnown: 0,
+    qualifiedLeads: 0,
+    hotLeads: 0,
+    checkoutSent: 0,
   },
-  conversations: [
-    {
-      id: 'conv_1',
-      name: 'Sabrina',
-      username: '@sabrina.moves',
-      avatar: 'S',
-      score: 84,
-      temperature: 'hot',
-      stage: 'objection',
-      aiMode: 'active',
-      lastMessage: 'Ich habe nur Angst, dass ich das technisch nicht hinbekomme.',
-      time: '09:02',
-      goal: 'Nebenberuflich ein Online-Business starten',
-      painPoint: 'Überfordert von Technik und den ersten Schritten',
-      experience: 'Anfängerin',
-      budget: '1.000–2.000 €',
-      objection: 'Angst vor Technik',
-      summary: 'Komplette Anfängerin. Möchte nebenberuflich starten. Motivation ist da, aber fehlender Startpunkt und Technik bremsen sie.',
-      knownFacts: '- startet komplett bei null\n- möchte nebenberuflich aufbauen\n- Motivation ist vorhanden\n- Technik und fehlender klarer Startpunkt bremsen sie',
-      openQuestions: '- Welche konkrete technische Aufgabe macht ihr am meisten Sorgen?\n- In welchem Zeitraum möchte sie starten?',
-      nextStep: 'Technik-Einwand konkretisieren. Danach zeigen, wie ein klarer Ablauf genau diese Unsicherheit reduziert.',
-      styleProfile: {
-        language: 'Deutsch',
-        address: 'du',
-        formality: 'locker',
-        sentenceLength: 'kurz',
-        messageLength: 'kurz',
-        emojiUsage: 'selten',
-        slang: 'kaum',
-        energy: 'ruhig',
-        directness: 'direkt',
-        humor: 'neutral',
-        punctuation: 'normal',
-        notes: 'Natürlich, knapp und ohne formelle Sales-Sprache antworten.',
-      },
-      messages: [
-        {
-          id: 'm1',
-          from: 'lead',
-          body: 'Hi, ich hab dein Reel gesehen. Wie funktioniert das genau?',
-          time: '08:51',
-        },
-        {
-          id: 'm2',
-          from: 'ai',
-          body: 'Hey Sabrina 👋 Kommt ein bisschen darauf an, wo du gerade stehst. Hast du schon etwas online aufgebaut oder würdest du komplett bei null starten?',
-          time: '08:52',
-        },
-        {
-          id: 'm3',
-          from: 'lead',
-          body: 'Komplett bei null. Ich will neben meinem Job etwas aufbauen.',
-          time: '08:55',
-        },
-        {
-          id: 'm4',
-          from: 'ai',
-          body: 'Verstanden. Was hält dich aktuell am meisten davon ab, wirklich anzufangen?',
-          time: '08:56',
-        },
-        {
-          id: 'm5',
-          from: 'lead',
-          body: 'Ich weiß nicht womit und Technik ist gar nicht mein Ding.',
-          time: '08:58',
-        },
-        {
-          id: 'm6',
-          from: 'ai',
-          body: 'Dann ist das Hauptproblem gerade weniger Motivation, sondern dass dir ein klarer Weg fehlt und du Angst hast, an der Technik hängen zu bleiben – richtig?',
-          time: '08:59',
-        },
-        {
-          id: 'm7',
-          from: 'lead',
-          body: 'Ja genau. Ich habe nur Angst, dass ich das technisch nicht hinbekomme.',
-          time: '09:02',
-        },
-      ],
-    },
-    {
-      id: 'conv_2',
-      name: 'Marvin',
-      username: '@marvin.builds',
-      avatar: 'M',
-      score: 67,
-      temperature: 'warm',
-      stage: 'qualification',
-      aiMode: 'active',
-      lastMessage: 'Mein Ziel wären erstmal 1.000 € zusätzlich.',
-      time: '08:44',
-      goal: '1.000 € zusätzlich',
-      painPoint: 'Keine planbare Leadquelle',
-      experience: 'Hat bereits Angebot',
-      budget: '500–1.000 €',
-      objection: 'Noch offen',
-      summary: 'Hat bereits ein Angebot und möchte planbar zusätzliche 1.000 € verdienen.',
-      knownFacts: '- hat bereits ein Angebot\n- Ziel: 1.000 € zusätzlich\n- braucht eine planbare Leadquelle',
-      openQuestions: '- Wie verkauft er aktuell?\n- Wie viele Leads bekommt er derzeit?',
-      nextStep: 'Aktuellen Verkaufsprozess verstehen und herausfinden, wo genau Leads fehlen.',
-      styleProfile: {
-        language: 'Deutsch',
-        address: 'du',
-        formality: 'locker',
-        sentenceLength: 'kurz',
-        messageLength: 'kurz',
-        emojiUsage: 'keine',
-        slang: 'kaum',
-        energy: 'sachlich',
-        directness: 'direkt',
-        humor: 'neutral',
-        punctuation: 'normal',
-        notes: 'Kurz und konkret antworten.',
-      },
-      messages: [],
-    },
-    {
-      id: 'conv_3',
-      name: 'Laura',
-      username: '@laura.digital',
-      avatar: 'L',
-      score: 39,
-      temperature: 'cold',
-      stage: 'discovery',
-      aiMode: 'paused',
-      lastMessage: 'Ich schaue mich erstmal nur um 😊',
-      time: 'Gestern',
-      goal: 'Noch unklar',
-      painPoint: 'Noch unklar',
-      experience: 'Unbekannt',
-      budget: 'Unbekannt',
-      objection: 'Kein akuter Bedarf',
-      summary: 'Schaut sich aktuell nur um. Noch kein klares Ziel oder akuter Bedarf.',
-      knownFacts: '- schaut sich nur um',
-      openQuestions: '- Was interessiert sie überhaupt?\n- Gibt es ein konkretes Ziel?',
-      nextStep: 'Keinen Druck machen. Locker herausfinden, was sie überhaupt spannend findet.',
-      styleProfile: {
-        language: 'Deutsch',
-        address: 'du',
-        formality: 'locker',
-        sentenceLength: 'kurz',
-        messageLength: 'kurz',
-        emojiUsage: 'gelegentlich',
-        slang: 'kaum',
-        energy: 'locker',
-        directness: 'weich',
-        humor: 'leicht',
-        punctuation: 'normal',
-        notes: 'Locker und unverbindlich bleiben.',
-      },
-      messages: [],
-    },
-  ],
+  conversations: [],
   agent: {
     name: 'Sales Agent',
     active: true,
@@ -942,33 +791,87 @@ async function workspaceConversations(env: Env, organizationId: string) {
 async function workspaceMetrics(env: Env, organizationId: string) {
   if (!env.DB) {
     return {
+      conversationsTotal: 0,
       conversationsToday: 0,
+      painPointsKnown: 0,
       qualifiedLeads: 0,
       hotLeads: 0,
       checkoutSent: 0,
-      conversions: 0,
     };
   }
 
   const row = await env.DB
     .prepare(
       `SELECT
-         (SELECT COUNT(*) FROM conversations
-          WHERE organization_id=? AND date(created_at)=date('now')) AS conversations_today,
-         (SELECT COUNT(*) FROM leads
-          WHERE organization_id=? AND stage IN ('qualification','solution','objection','close')) AS qualified_leads,
-         (SELECT COUNT(*) FROM leads
-          WHERE organization_id=? AND temperature='hot') AS hot_leads`,
+         (SELECT COUNT(*)
+          FROM conversations
+          WHERE organization_id=?) AS conversations_total,
+
+         (SELECT COUNT(*)
+          FROM conversations
+          WHERE organization_id=?
+            AND date(COALESCE(last_message_at,created_at))=date('now')) AS conversations_today,
+
+         (SELECT COUNT(*)
+          FROM leads
+          WHERE organization_id=?
+            AND TRIM(COALESCE(pain_point,'')) <> ''
+            AND LOWER(TRIM(pain_point)) NOT IN
+              ('unklar','noch unklar','unbekannt','noch offen')) AS pain_points_known,
+
+         (SELECT COUNT(*)
+          FROM leads
+          WHERE organization_id=?
+            AND stage IN ('qualification','solution','objection','close')) AS qualified_leads,
+
+         (SELECT COUNT(*)
+          FROM leads
+          WHERE organization_id=?
+            AND temperature='hot') AS hot_leads,
+
+         (SELECT COUNT(DISTINCT m.id)
+          FROM messages m
+          JOIN conversations c ON c.id=m.conversation_id
+          WHERE c.organization_id=?
+            AND m.organization_id=?
+            AND m.direction='outbound'
+            AND COALESCE(
+              (SELECT checkout_url
+               FROM ai_agents
+               WHERE organization_id=?
+               ORDER BY updated_at DESC
+               LIMIT 1),
+              ''
+            ) <> ''
+            AND instr(
+              m.body,
+              (SELECT checkout_url
+               FROM ai_agents
+               WHERE organization_id=?
+               ORDER BY updated_at DESC
+               LIMIT 1)
+            ) > 0) AS checkout_sent`,
     )
-    .bind(organizationId, organizationId, organizationId)
+    .bind(
+      organizationId,
+      organizationId,
+      organizationId,
+      organizationId,
+      organizationId,
+      organizationId,
+      organizationId,
+      organizationId,
+      organizationId,
+    )
     .first<D1Row>();
 
   return {
+    conversationsTotal: Number(row?.conversations_total || 0),
     conversationsToday: Number(row?.conversations_today || 0),
+    painPointsKnown: Number(row?.pain_points_known || 0),
     qualifiedLeads: Number(row?.qualified_leads || 0),
     hotLeads: Number(row?.hot_leads || 0),
-    checkoutSent: 0,
-    conversions: 0,
+    checkoutSent: Number(row?.checkout_sent || 0),
   };
 }
 
