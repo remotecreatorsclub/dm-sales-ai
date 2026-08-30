@@ -460,7 +460,8 @@ async function decryptToken(value: string, keyB64: string) {
 
 const SESSION_COOKIE = 'dm_sales_session';
 const SESSION_DAYS = 30;
-const PASSWORD_ITERATIONS = 600_000;
+// Cloudflare Workers WebCrypto supports PBKDF2 iteration counts up to 100,000.
+const PASSWORD_ITERATIONS = 100_000;
 
 function normalizeEmail(value: unknown) {
   return String(value || '').trim().toLowerCase();
