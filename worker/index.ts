@@ -590,13 +590,20 @@ async function verifyEmailToken(
   const tokenHash = await sha256Hex(token);
   const row = await env.DB
     .prepare(
-      `SELECT t.id,t.user_id,u.email
+      `SELECT
+         t.id,
+         t.user_id,
+         u.email,
+         u.name,
+         m.organization_id
        FROM auth_tokens t
        JOIN users u ON u.id=t.user_id
+       JOIN memberships m ON m.user_id=u.id
        WHERE t.token_hash=?
          AND t.type='verify_email'
          AND t.used_at IS NULL
          AND t.expires_at > CURRENT_TIMESTAMP
+       ORDER BY CASE WHEN m.role='owner' THEN 0 ELSE 1 END
        LIMIT 1`,
     )
     .bind(tokenHash)
@@ -623,7 +630,35 @@ async function verifyEmailToken(
       .bind(row.id),
   ]);
 
-  return json({ ok: true, email: String(row.email || '') });
+  const organizationId = String(row.organization_id || '');
+  if (!organizationId) {
+    return json(
+      { error: 'Für dieses Konto wurde kein Workspace gefunden.' },
+      { status: 409 },
+    );
+  }
+
+  // Der einmalige Bestätigungslink beweist den Zugriff auf die E-Mail-Adresse.
+  // Deshalb darf er nach erfolgreicher Verifizierung direkt eine frische
+  // Session für genau diesen Benutzer + Workspace erstellen.
+  const session = await createSession(
+    env,
+    String(row.user_id),
+    organizationId,
+  );
+
+  return json(
+    {
+      ok: true,
+      email: String(row.email || ''),
+      sessionCreated: true,
+    },
+    {
+      headers: {
+        'Set-Cookie': sessionCookie(session.token),
+      },
+    },
+  );
 }
 
 async function forgotPassword(
