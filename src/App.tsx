@@ -252,6 +252,8 @@ function VerifyEmailPage({token}:{token:string}){
   const [message,setMessage]=useState('E-Mail-Adresse wird bestätigt…');
 
   useEffect(()=>{
+    let redirectTimer:number|undefined;
+
     fetch('/api/auth/verify-email',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -260,13 +262,23 @@ function VerifyEmailPage({token}:{token:string}){
       .then(async r=>{
         const j:any=await r.json();
         if(!r.ok)throw new Error(j.error||'Bestätigung fehlgeschlagen.');
-        setMessage('Deine E-Mail-Adresse wurde bestätigt.');
+
+        setMessage('Deine E-Mail-Adresse wurde bestätigt. Du wirst zur Plan-Auswahl weitergeleitet.');
         setState('success');
+
+        redirectTimer=window.setTimeout(()=>{
+          window.history.replaceState({},'',window.location.pathname);
+          window.location.replace('/');
+        },900);
       })
       .catch(error=>{
         setMessage(error?.message||'Bestätigung fehlgeschlagen.');
         setState('error');
       });
+
+    return ()=>{
+      if(redirectTimer)window.clearTimeout(redirectTimer);
+    };
   },[token]);
 
   return <AuthResultPage
@@ -274,7 +286,7 @@ function VerifyEmailPage({token}:{token:string}){
     message={message}
     success={state==='success'}
     loading={state==='loading'}
-    buttonLabel={state==='success'?'Weiter zu DM Sales AI':'Zur Anmeldung'}
+    buttonLabel={state==='success'?'Weiter zur Plan-Auswahl':'Zur Anmeldung'}
   />;
 }
 
