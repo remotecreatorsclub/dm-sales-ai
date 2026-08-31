@@ -588,7 +588,7 @@ function Dashboard({data,onOpenInbox,onConnect}:{data:Bootstrap,onOpenInbox:()=>
 
     <div className="dashboard-grid">
       <section className="panel activity-panel">
-        <div className="panel-head"><div><b>Live Sales Activity</b><span>Nur echte Daten aus deinem Workspace</span></div><span className="live"><i/> LIVE</span></div>
+        <div className="panel-head"><div><b>Sales Activity</b><span>Aktueller Stand deiner Gespräche</span></div></div>
         {total>0
           ? <div className="funnel">
               {funnel.map(([label,value])=>{
@@ -983,7 +983,7 @@ function TestChat({agent}:{agent:Record<string,any>}){
               <span>{thinking?'AI antwortet…':'Als Lead senden'}</span>
             </button>
           </div>
-          <small>Die KI nutzt Lead Memory + Style Profile + die letzten 10 Nachrichten und wartet realistisch, bevor sie antwortet.</small>
+          <small>Teste hier, wie dein AI Sales Agent auf echte Lead-Nachrichten reagieren würde.</small>
         </div>
       </section>
 
@@ -1248,13 +1248,13 @@ function Integrations({instagram}:{instagram:Bootstrap['instagram'] & {ready?:bo
   }
 
   return <>
-    <PageHead eyebrow="INTEGRATIONEN" title="Instagram verbinden" desc="Verbinde deinen professionellen Instagram-Account sicher über die offizielle Meta API."/>
+    <PageHead eyebrow="INTEGRATIONEN" title="Instagram verbinden" desc="Verbinde deinen professionellen Instagram-Account mit DM Sales AI."/>
     <div className="integration-card">
       <div className="instagram-logo"><Instagram/></div>
       <div className="integration-info">
-        <div><h3>Instagram</h3><span className="official">META API</span></div>
-        <p>Empfange DMs per Webhook und sende AI- oder manuelle Antworten über die offizielle Instagram API.</p>
-        <div className="feature-chips"><span><Check/> DMs</span><span><Check/> Webhooks</span><span><Check/> AI Antworten</span></div>
+        <div><h3>Instagram</h3></div>
+        <p>Empfange Instagram-DMs und beantworte Gespräche direkt mit deinem AI Sales Agent oder selbst.</p>
+        <div className="feature-chips"><span><Check/> DMs</span><span><Check/> AI Antworten</span><span><Check/> Eigene Antworten</span></div>
       </div>
       <div className="integration-action">
         <span className={instagram.connected?'connected':'disconnected'}>{instagram.connected?`Verbunden${instagram.username?` · ${instagram.username}`:''}`:'Nicht verbunden'}</span>
@@ -1263,7 +1263,7 @@ function Integrations({instagram}:{instagram:Bootstrap['instagram'] & {ready?:bo
         </button>
       </div>
     </div>
-    {instagram.ready===false&&<div className="notice warning-notice"><ShieldCheck/><div><b>Instagram API noch nicht freigeschaltet</b><p>Für diesen Deployment fehlen noch die vollständigen Meta-Zugangsdaten. Erst danach kann ein Kundenkonto verbunden werden.</p></div></div>}
+    {instagram.ready===false&&<div className="notice warning-notice"><Instagram/><div><b>Instagram-Verbindung derzeit nicht verfügbar</b><p>Diese Funktion wird gerade freigeschaltet. Bitte versuche es später erneut.</p></div></div>}
     {msg&&<div className="notice"><ShieldCheck/><div><b>Instagram</b><p>{msg}</p></div></div>}
   </>
 }
@@ -1397,10 +1397,10 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         const j:any=await r.json();
         if(j.billing){setBilling(j.billing);onBillingChange?.(j.billing);}
         if(!r.ok&&j.error)setMessage(j.error);
-        if(returned==='success')setMessage('PayPal-Abo bestätigt. Dein Status wurde synchronisiert.');
+        if(returned==='success')setMessage('Dein Abo ist jetzt aktiv.');
         if(returned==='cancelled')setMessage('PayPal-Checkout wurde abgebrochen.');
       })
-      .catch(()=>setMessage('PayPal-Status konnte gerade nicht geladen werden.'))
+      .catch(()=>setMessage('Dein Abo-Status konnte gerade nicht geladen werden.'))
       .finally(()=>{
         if(returned){
           params.delete('billing');
@@ -1420,7 +1420,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         body:JSON.stringify({plan}),
       });
       const j:any=await r.json();
-      if(!r.ok){setMessage(j.error||'PayPal konnte nicht gestartet werden.');return;}
+      if(!r.ok){setMessage(j.error||'Die Zahlung konnte nicht gestartet werden.');return;}
       if(j.alreadyActive){
         const next=j.billing||billing;
         setBilling(next);
@@ -1432,9 +1432,9 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         window.location.href=j.approveUrl;
         return;
       }
-      setMessage('PayPal hat keinen Freigabe-Link zurückgegeben.');
+      setMessage('Die Zahlung konnte nicht geöffnet werden. Bitte versuche es erneut.');
     }catch{
-      setMessage('Verbindung zu PayPal fehlgeschlagen.');
+      setMessage('Die Zahlung konnte gerade nicht verarbeitet werden. Bitte versuche es erneut.');
     }finally{
       setLoading('');
     }
@@ -1465,14 +1465,14 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
           : 'Das PayPal-Abo wurde gekündigt.'
       );
     }catch{
-      setMessage('Verbindung zu PayPal fehlgeschlagen.');
+      setMessage('Die Zahlung konnte gerade nicht verarbeitet werden. Bitte versuche es erneut.');
     }finally{
       setLoading('');
     }
   }
 
   function planButton(plan:'starter'|'pro'){
-    if(!billing?.configured)return <button className="secondary" disabled>PayPal noch nicht konfiguriert</button>;
+    if(!billing?.configured)return <button className="secondary" disabled>Zahlung derzeit nicht verfügbar</button>;
     if(active&&currentPlan===plan)return <button className="secondary" disabled>Aktueller Plan</button>;
     if(cancelledWithAccess&&currentPlan===plan)return <button className="secondary" disabled>{`Aktiv bis ${paidThroughLabel}`}</button>;
     const changing=active&&currentPlan!==plan;
@@ -1482,7 +1482,7 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
   }
 
   return <>
-    <PageHead eyebrow="PAYPAL BILLING" title="Pläne & Nutzung" desc="Abos laufen vollständig über PayPal. Keine Stripe-Abhängigkeit."/>
+    <PageHead eyebrow="ABONNEMENT" title="Pläne & Nutzung" desc="Verwalte hier deinen Plan und deine monatliche Nutzung."/>
 
     <div className="billing-status panel">
       <div>
@@ -1495,8 +1495,8 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
         <p>{cancelledWithAccess
           ? `Bereits bezahlt · voller Zugang bis ${paidThroughLabel} · danach keine weitere Abbuchung`
           : billing?.configured
-            ? `PayPal ist konfiguriert · ${billing?.mode==='live'?'LIVE':'SANDBOX'}`
-            : 'PayPal-Zugangsdaten und Plan IDs müssen noch hinterlegt werden.'}</p>
+            ? 'Dein Abonnement ist aktiv.'
+            : 'Zahlung ist derzeit nicht verfügbar.'}</p>
       </div>
       <div className="billing-status-actions">
         <span className={`billing-state ${hasAccess?'active':status}`}>
@@ -1526,10 +1526,6 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
       </div>
     </div>
 
-    <div className="paypal-note">
-      <ShieldCheck size={16}/>
-      <div><b>Sichere wiederkehrende Zahlung über PayPal</b><span>PayPal verwaltet Freigabe und monatliche Abbuchungen. Statusänderungen werden per Webhook an DM Sales AI synchronisiert.</span></div>
-    </div>
   </>
 }
 function SettingsPage({user,organization,onLogout}:{user:any,organization:any,onLogout:()=>void}){
