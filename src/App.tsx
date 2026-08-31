@@ -1494,13 +1494,25 @@ function Billing({initial,onBillingChange}:{initial?:Bootstrap['billing'],onBill
             : 'Kein aktives Abo'}</h3>
         <p>{cancelledWithAccess
           ? `Bereits bezahlt · voller Zugang bis ${paidThroughLabel} · danach keine weitere Abbuchung`
-          : billing?.configured
+          : active
             ? 'Dein Abonnement ist aktiv.'
-            : 'Zahlung ist derzeit nicht verfügbar.'}</p>
+            : billing?.configured
+              ? 'Wähle unten einen Plan, um deinen Workspace zu aktivieren.'
+              : 'Zahlung ist derzeit nicht verfügbar.'}</p>
       </div>
       <div className="billing-status-actions">
         <span className={`billing-state ${hasAccess?'active':status}`}>
-          {active?'AKTIV':cancelledWithAccess?`AKTIV BIS ${paidThroughLabel}`:status.toUpperCase()}
+          {active
+            ? 'AKTIV'
+            : cancelledWithAccess
+              ? `AKTIV BIS ${paidThroughLabel}`
+              : status==='cancelled'
+                ? 'GEKÜNDIGT'
+                : status==='suspended'
+                  ? 'PAUSIERT'
+                  : status==='expired'
+                    ? 'ABGELAUFEN'
+                    : 'INAKTIV'}
         </span>
         {active&&<button className="text-btn danger-text" onClick={cancel} disabled={loading==='cancel'}>{loading==='cancel'?'Wird gekündigt…':'Abo kündigen'}</button>}
       </div>
